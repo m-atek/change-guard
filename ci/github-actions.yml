@@ -85,11 +85,13 @@ jobs:
                   --jq '.[] | select(.event == "labeled" and .label.name == "change-guard-skip") | .actor.login' | tail -n 1)
           reason=$(printf '%s\n' "$PR_BODY" | tr -d '\r' \
                   | sed -n 's/^[[:space:]]*Change-Guard-Skip-Reason:[[:space:]]*//p' | head -n 1)
+          # A random delimiter, as in action.yml: a reason line cannot end the value early.
+          delim="cg_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
           {
             echo "CHANGE_GUARD_SKIP_BY=${who}"
-            echo "CHANGE_GUARD_SKIP_REASON<<CG_EOF"
+            echo "CHANGE_GUARD_SKIP_REASON<<${delim}"
             echo "$reason"
-            echo "CG_EOF"
+            echo "${delim}"
           } >> "$GITHUB_ENV"
           echo "Skip label set by ${who:-unknown}; reason: ${reason:-none given}"
 

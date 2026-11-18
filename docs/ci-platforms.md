@@ -7,7 +7,7 @@ The folder `ci/` holds one example file per platform, and `action.yml` at the ro
 | File | Platform | Has it run there? |
 |---|---|---|
 | `ci/github-actions.yml` | GitHub Actions, pull request check | Yes, on 18 November 2026 (see below) |
-| `action.yml` | GitHub Actions, the same check packaged as an action ([github-action.md](github-action.md)) | Not yet on 18 November 2026: its steps were run locally on the fixture in `tests/fixtures/action-selftest/`, and `.github/workflows/action-selftest.yml` runs it on GitHub on every push |
+| `action.yml` | GitHub Actions, the same check packaged as an action ([github-action.md](github-action.md)) | Its self-test, `.github/workflows/action-selftest.yml`, which runs the action from the checkout (`uses: ./`) on the fixture in `tests/fixtures/action-selftest/`, has run green on GitHub's hosted Linux runner on 18 November 2026: on the branches `action-test` and `polyglot-test` of a private demonstration repository and on the kit repository's `main`. Not yet called from another repository by name and version, and not yet listed on the Marketplace |
 | `ci/gitlab-ci.yml` | GitLab CI, merge request job | No |
 | `ci/Jenkinsfile.change-guard` | Jenkins multibranch pipeline with pull request discovery | No |
 | `ci/azure-pipelines.change-guard.yml` | Azure DevOps Pipelines, build validation | No |
@@ -44,7 +44,7 @@ The workflow ran in a private demonstration repository built with `seed_cases.py
 - On GitHub's free plan a private repository cannot make a status check required (GitHub answered "Upgrade to GitHub Pro or make this repository public to enable this feature"), so the pull requests there turned red but merging was not blocked. Public repositories and paid plans can require the check.
 - Three runs started right after the workflow file changed on the main branch still ran the earlier version of the workflow file. The guard's own result was right in each. The likely cause, not confirmed, is that GitHub had not rebuilt the pull request's merge commit yet.
 
-Not covered by that run: pytest on a hosted runner, Windows and macOS runners, pull requests from forks, a blocked merge, and real project code.
+Not covered by that run: pytest on a hosted runner (it ran later, in the polyglot workflow, run 44352029536), Windows and macOS runners, pull requests from forks, a blocked merge, and real project code.
 
 ## GitLab CI (`ci/gitlab-ci.yml`), not run on GitLab
 

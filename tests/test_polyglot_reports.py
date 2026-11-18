@@ -55,7 +55,8 @@ NO_REPORT_WHEN_NOT_COMPILED = ("maven", "dotnet", "gradle", "kotlin", "swift", "
 
 # The report format of every fixture in tests/polyglot/.
 FORMATS = dict({eco: v[0] for eco, v in ECOSYSTEMS.items()},
-               gradle="junit-xml", kotlin="junit-xml", swift="junit-xml", **{"swift-testing": "junit-xml"})
+               gradle="junit-xml", kotlin="junit-xml", swift="junit-xml", pytest="junit-xml",
+               **{"swift-testing": "junit-xml"})
 
 
 def config():

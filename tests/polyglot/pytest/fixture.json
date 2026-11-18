@@ -1,0 +1,10 @@
+{
+  "_comment": "Demo project, no real data. Python with pytest and its JUnit XML report. The built-in probe runs here, so the two new-function cases are judged by it: the call-only test is stopped and the real test passes with the probe's proof, also with base_error_policy stop.",
+  "runner": "pytest, JUnit XML report, built-in probe",
+  "overrides": {
+    "4-new-function-call-only": {"expect": ["STOPPED", "probe-passes"], "notes": [], "probe": "not-covered:format_price"},
+    "5-new-function-real-test": {"expect": ["PASSED", "ok-new-code"], "notes": [], "probe": "covered"},
+    "4-new-function-call-only, policy stop": {"expect": ["STOPPED", "probe-passes"], "probe": "not-covered:format_price"},
+    "5-new-function-real-test, policy stop": {"expect": ["PASSED", "ok-new-code"], "probe": "covered"}
+  }
+}

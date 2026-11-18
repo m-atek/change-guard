@@ -158,6 +158,8 @@ GitHub takes the workflow file from the pull request, so a pull request can chan
 | `blocks` | `true` when this run fails the check |
 | `log-line` | The run's one log line in the `cg2` format |
 
+The outputs are for information, for example for a later step that posts a summary. The check passes or fails on the guard's exit code, not on the outputs. The action reads them from a result file the guard writes at the end of the run, and test code that outlives the guard could change that file; `blocks` therefore follows the exit code, and the action warns when the file disagrees with it. Do not make a later step decide a merge from `result` or `cause`.
+
 Outside a pull request (for example on `push` or `workflow_dispatch`), set `base` and `head` yourself.
 
 ## What the action does
@@ -166,6 +168,8 @@ Outside a pull request (for example on `push` or `workflow_dispatch`), set `base
 2. Copies `change_guard.py` and `cg_unittest_report.py` from the action's own files, at the version you pinned, into a fresh folder under `$RUNNER_TEMP`, and runs them from there. It never runs a copy of the guard that the pull request brings.
 3. If the skip label is on the pull request, reads who added it and the reason line.
 4. Runs the guard with the base and head commits, writes the step summary, prints the log line, appends it to `.change-guard/runs.log` and sets the outputs.
+
+**Never use the action as `uses: ./` in the repository it checks.** `uses: ./` runs the action from the checkout, which on a pull request is the pull request's own copy: the change would bring the guard that judges it. Use the action from the pinned release (`uses: <owner>/change-guard@<full commit hash>`). Only this kit's own self-test uses `uses: ./`, because there the action itself is what is being tested.
 
 ## What the action does not do
 

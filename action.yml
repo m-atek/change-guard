@@ -198,16 +198,23 @@ runs:
           --summary "$GITHUB_STEP_SUMMARY" \
           --result-json "$result_json" || status=$?
         if [ -f "$result_json" ]; then
-          python3 - "$result_json" <<'PY'
+          python3 - "$result_json" "$status" <<'PY'
         import json, os, sys
         with open(sys.argv[1], encoding="utf-8") as fh:
             data = json.load(fh)
+        # The outputs are for information; the guard's exit code decides the check.
+        # blocks follows the exit code, so a result file changed after the guard
+        # wrote it cannot turn a failing check into blocks=false.
+        exit_blocks = sys.argv[2] != "0"
+        if bool(data.get("blocks")) != exit_blocks:
+            print("::warning title=change-guard::The result file does not match the guard's exit code (%s); "
+                  "the blocks output follows the exit code." % sys.argv[2])
         delim = "cg_" + os.urandom(8).hex()
         values = {
             "result": data.get("result") or "",
             "cause": data.get("cause") or "",
             "mode": data.get("mode") or "",
-            "blocks": "true" if data.get("blocks") else "false",
+            "blocks": "true" if exit_blocks else "false",
             "log-line": data.get("log_line") or "",
         }
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:

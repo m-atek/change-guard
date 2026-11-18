@@ -18,7 +18,8 @@ phpunit, rspec). The script:
    from main whose one commit lays those files over main;
 3. runs change_guard.py in blocking mode on every branch, and on the variants
    (the same branch with a configuration read from disk: VARIANTS below for
-   every fixture, plus the "variants" of the fixture's fixture.json),
+   every fixture, plus the "variants" of the fixture's fixture.json; its
+   "overrides" replace the expectations of a case or variant by name),
    and checks the result, the cause, the notes and the class of each new test
    on the base against the expectations below;
 4. prints one line per case, writes a Markdown table to --summary (for
@@ -273,7 +274,12 @@ def main():
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(dict(raw, **v["config"]), fh, indent=2)
         runs.append((v, v["branch"], v["name"], path))
+    # A fixture can change what a case must give (the Python fixture, where the probe runs).
+    overrides = fixture.get("overrides", {})
     for case, branch, label, config in runs:
+        if label in overrides:
+            case = dict(case, **overrides[label])
+            case["expect"] = tuple(case["expect"])
         rc, out, data, secs = run_guard(repo, branch, work, label, config)
         files = new_test_files(eco_dir, branch, cfg)
         problems = check(case, data, files, rc)
