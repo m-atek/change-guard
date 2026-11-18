@@ -1,0 +1,11 @@
+{
+  "_comment": "Demo project, no real data. Swift with XCTest: swift test runs the test classes named like the changed test files and writes xUnit XML into .build/cg-xunit/.",
+  "protected": ["Sources/**", "Package.swift"],
+  "tests": ["Tests/**/*Tests.swift"],
+  "exempt": ["*.md", "Package.resolved"],
+  "test_command": "mkdir -p .build/cg-xunit && swift test --parallel --filter {names_regex} --xunit-output .build/cg-xunit/results.xml",
+  "report_format": "junit-xml",
+  "report_path": ".build/cg-xunit",
+  "time_budget_seconds": 600,
+  "mode": "report"
+}

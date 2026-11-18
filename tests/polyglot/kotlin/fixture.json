@@ -1,0 +1,5 @@
+{
+  "_comment": "Demo project, no real data. Kotlin on the JVM with Gradle and kotlin.test on JUnit 5. prepare runs the base tests once, which downloads the Kotlin plugin and the test libraries into the Gradle user home.",
+  "runner": "Gradle with the Kotlin JVM plugin, kotlin.test on JUnit 5",
+  "prepare": "gradle --no-daemon --console=plain -q test"
+}

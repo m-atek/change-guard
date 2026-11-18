@@ -1,0 +1,233 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Expeditious Software
+#
+# Runs the change guard on real toolchains outside Python: one job per
+# ecosystem builds the small fixture in tests/polyglot/<ecosystem>/ into a
+# throwaway git repository under $RUNNER_TEMP and runs the guard in blocking
+# mode on every seeded case (tests/polyglot/run_polyglot.py checks the result,
+# the cause, the notes and how each new test was read on the base). Demo
+# projects, no real data. It only reads the repository and needs no secrets.
+# Set CAPTURE_FLAG to "--capture" to also print each runner's own reports into the log.
+
+name: polyglot
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  CAPTURE_FLAG: ""
+
+jobs:
+  vitest:
+    name: TypeScript, Vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Versions
+        run: |
+          python3 --version; git --version; node --version; npm --version
+      - name: Seeded cases
+        run: python3 -B tests/polyglot/run_polyglot.py vitest "$RUNNER_TEMP/pg" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG
+      - name: Runner version
+        if: always()
+        run: cd "$RUNNER_TEMP/pg/repo" && npx vitest --version
+
+  jest:
+    name: JavaScript, Jest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Versions
+        run: |
+          python3 --version; git --version; node --version; npm --version
+      - name: Seeded cases
+        run: python3 -B tests/polyglot/run_polyglot.py jest "$RUNNER_TEMP/pg" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG
+      - name: Runner version
+        if: always()
+        run: cd "$RUNNER_TEMP/pg/repo" && npx jest --version
+
+  maven:
+    name: Java, Maven and JUnit 5
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Versions
+        run: |
+          python3 --version; git --version; java -version 2>&1
+          if ! command -v mvn >/dev/null; then echo "::error::Maven is not installed on this runner image"; exit 1; fi
+          mvn -v
+      - name: Seeded cases
+        run: python3 -B tests/polyglot/run_polyglot.py maven "$RUNNER_TEMP/pg" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG
+
+  go:
+    name: Go, go test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+      - name: Versions
+        run: |
+          python3 --version; git --version; go version
+      - name: Seeded cases
+        run: python3 -B tests/polyglot/run_polyglot.py go "$RUNNER_TEMP/pg" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG
+
+  dotnet:
+    name: C#, .NET and xUnit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      - name: Versions
+        run: |
+          python3 --version; git --version; dotnet --version
+      - name: Seeded cases
+        run: python3 -B tests/polyglot/run_polyglot.py dotnet "$RUNNER_TEMP/pg" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG
+
+  phpunit:
+    name: PHP, PHPUnit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          tools: composer:v2
+          coverage: none
+      - name: Versions
+        run: |
+          python3 --version; git --version; php --version; composer --version
+      - name: Seeded cases
+        run: python3 -B tests/polyglot/run_polyglot.py phpunit "$RUNNER_TEMP/pg" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG
+      - name: Runner version
+        if: always()
+        run: cd "$RUNNER_TEMP/pg/repo" && vendor/bin/phpunit --version
+
+  rspec:
+    name: Ruby, RSpec
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - name: Versions
+        run: |
+          python3 --version; git --version; ruby --version; bundle --version
+      - name: Seeded cases
+        run: python3 -B tests/polyglot/run_polyglot.py rspec "$RUNNER_TEMP/pg" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG
+      - name: Runner version
+        if: always()
+        run: cd "$RUNNER_TEMP/pg/repo" && bundle exec rspec --version
+
+  gradle:
+    name: Java, Gradle and JUnit 5
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.9.1"
+          cache-disabled: true
+      - name: Versions
+        run: |
+          python3 --version; git --version; java -version 2>&1; gradle --version
+      - name: Seeded cases
+        run: python3 -B tests/polyglot/run_polyglot.py gradle "$RUNNER_TEMP/pg" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG
+
+  kotlin:
+    name: Kotlin, Gradle and kotlin.test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.9.1"
+          cache-disabled: true
+      - name: Versions
+        run: |
+          python3 --version; git --version; java -version 2>&1; gradle --version
+      - name: Seeded cases
+        run: python3 -B tests/polyglot/run_polyglot.py kotlin "$RUNNER_TEMP/pg" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG
+
+  swift:
+    name: Swift, swift test (XCTest and Swift Testing)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Look for the runner's own Swift toolchain
+        id: toolchain
+        run: |
+          if command -v swift >/dev/null 2>&1; then echo "found=true" >> "$GITHUB_OUTPUT"; command -v swift; else echo "found=false" >> "$GITHUB_OUTPUT"; echo "no swift on this image"; fi
+      - uses: swift-actions/setup-swift@v2
+        if: steps.toolchain.outputs.found != 'true'
+        with:
+          swift-version: "6.1"
+      - name: Versions
+        run: |
+          python3 --version; git --version; swift --version
+      - name: Seeded cases, XCTest
+        run: python3 -B tests/polyglot/run_polyglot.py swift "$RUNNER_TEMP/pg" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG
+      - name: Seeded cases, Swift Testing
+        if: success() || failure()
+        run: python3 -B tests/polyglot/run_polyglot.py swift-testing "$RUNNER_TEMP/pg-testing" --prepare --summary "$GITHUB_STEP_SUMMARY" $CAPTURE_FLAG

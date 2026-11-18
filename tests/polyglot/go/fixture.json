@@ -1,0 +1,5 @@
+{
+  "_comment": "Demo project, no real data. Go with the standard testing package; no dependencies. prepare fills the build cache once.",
+  "runner": "go test -json",
+  "prepare": "go vet ./... && go test -count=1 ./..."
+}

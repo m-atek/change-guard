@@ -1,0 +1,5 @@
+  Determining projects to restore...
+  Restored <worktree>/src/Shop/Shop.csproj (in 107 ms).
+  Restored <worktree>/tests/Shop.Tests/Shop.Tests.csproj (in 240 ms).
+  Shop -> <worktree>/src/Shop/bin/Debug/net10.0/Shop.dll
+<worktree>/tests/Shop.Tests/FormatTests.cs(11,17): error CS0117: 'Pricing' does not contain a definition for 'FormatPrice' [<worktree>/tests/Shop.Tests/Shop.Tests.csproj]

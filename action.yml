@@ -1,0 +1,222 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Expeditious Software
+#
+# The change guard as a composite action for GitHub Actions.
+#
+# What it runs: change_guard.py and cg_unittest_report.py from this action's
+# own files, at the version your workflow pins, copied to a fresh folder under
+# $RUNNER_TEMP before the tests of the pull request run. It never runs a copy
+# of the guard that the pull request brings. The guard still reads its
+# configuration from the base commit, never from the pull request.
+#
+# What it needs from your workflow (see docs/github-action.md):
+#   - the pull_request trigger (this action refuses pull_request_target),
+#   - permissions: contents: read, pull-requests: read, issues: read,
+#   - actions/checkout with fetch-depth: 0 (the guard needs the merge base),
+#   - no secrets in the job: the guard runs the pull request's own tests.
+#
+# It uses no other action inside it: every step is bash and Python 3 from the
+# runner, with the Python standard library only. It makes no network call
+# except one read of the pull request's label history through the GitHub API,
+# and only when the skip label is on the pull request.
+
+name: 'Change guard: fail-to-pass test check'
+description: 'Pull request check that new tests fail without the change and pass with it, for code from people and AI coding agents.'
+author: 'Expeditious Software'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  config:
+    description: 'Path of the configuration file, relative to working-directory. The guard reads it from the base commit, never from the pull request.'
+    required: false
+    default: 'change-guard.json'
+  mode:
+    description: 'report (the check stays green and says what blocking mode would do) or block (STOPPED, TIMEOUT and ERROR fail the check). This input wins over the mode key in the configuration.'
+    required: false
+    default: 'report'
+  base:
+    description: 'Base commit. Default: the base commit of the pull request. The guard compares against the merge base of base and head.'
+    required: false
+    default: ${{ github.event.pull_request.base.sha }}
+  head:
+    description: 'Head commit of the change. Default: the head commit of the pull request.'
+    required: false
+    default: ${{ github.event.pull_request.head.sha }}
+  skip-label:
+    description: 'Label that requests the documented skip. It needs a line "Change-Guard-Skip-Reason: <at least 10 characters>" in the pull request description; who added the label is read from the label history and recorded. An empty value turns the skip step off.'
+    required: false
+    default: 'change-guard-skip'
+  enforce-label:
+    description: 'Label that puts one pull request in blocking mode. It can only make the guard stricter. An empty value turns it off.'
+    required: false
+    default: 'change-guard-enforce'
+  working-directory:
+    description: 'Folder of the git repository to judge, relative to the workspace.'
+    required: false
+    default: '.'
+  token:
+    description: 'Token used only to read who added the skip label. The default job token is enough with issues: read and pull-requests: read.'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  result:
+    description: 'PASSED, EXEMPT, OUT_OF_SCOPE, SKIPPED, STOPPED, TIMEOUT or ERROR.'
+    value: ${{ steps.guard.outputs.result }}
+  cause:
+    description: 'The cause code, for example no-test, test-passes-on-base or ok (docs/how-it-works.md lists them all).'
+    value: ${{ steps.guard.outputs.cause }}
+  mode:
+    description: 'The mode the guard ran in: report or block.'
+    value: ${{ steps.guard.outputs.mode }}
+  blocks:
+    description: 'true when this run fails the check (blocking mode and a result that stops the change), else false.'
+    value: ${{ steps.guard.outputs.blocks }}
+  log-line:
+    description: 'The one log line of this run, in the tab-separated cg2 format.'
+    value: ${{ steps.guard.outputs.log-line }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Prepare the change guard
+      id: prepare
+      shell: bash
+      env:
+        CG_EVENT: ${{ github.event_name }}
+        CG_MODE: ${{ inputs.mode }}
+        CG_BASE: ${{ inputs.base }}
+        CG_HEAD: ${{ inputs.head }}
+        CG_SKIP_LABEL: ${{ inputs.skip-label }}
+        CG_ENFORCE_LABEL: ${{ inputs.enforce-label }}
+        CG_WORKDIR: ${{ inputs.working-directory }}
+        CG_ACTION_PATH: ${{ github.action_path }}
+        CG_ACTION_REPOSITORY: ${{ github.action_repository }}
+        CG_ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+        fail() { echo "::error title=change-guard::$1"; exit 2; }
+        case "$CG_EVENT" in
+          pull_request_target)
+            fail "This action does not run on pull_request_target: the guard runs the pull request's own tests, and that trigger gives them the repository's secrets and a token that can write. Use the pull_request trigger." ;;
+        esac
+        case "$CG_MODE" in
+          report|block) ;;
+          *) fail "The input mode must be report or block, not '$CG_MODE'." ;;
+        esac
+        for label in "$CG_SKIP_LABEL" "$CG_ENFORCE_LABEL"; do
+          if [ -n "$label" ] && ! printf '%s' "$label" | grep -Eq '^[A-Za-z0-9._-]{1,50}$'; then
+            fail "Label names for this action may use letters, digits, dots, dashes and underscores only (got '$label')."
+          fi
+        done
+        if [ -z "$CG_BASE" ] || [ -z "$CG_HEAD" ]; then
+          fail "No base or head commit. Outside a pull_request event, set the inputs base and head."
+        fi
+        if ! git -C "$CG_WORKDIR" rev-parse --git-dir > /dev/null 2>&1; then
+          fail "The working-directory '$CG_WORKDIR' is not a git repository. Check out the repository first (actions/checkout with fetch-depth: 0)."
+        fi
+        if [ "$(git -C "$CG_WORKDIR" rev-parse --is-shallow-repository)" = "true" ]; then
+          echo "::warning title=change-guard::The checkout is shallow, so the guard may not find the merge base. Use actions/checkout with fetch-depth: 0."
+        fi
+        # The guard comes from this action's own files, never from the pull request.
+        tools=$(mktemp -d "${RUNNER_TEMP:-/tmp}/change-guard.XXXXXX")
+        for f in change_guard.py cg_unittest_report.py; do
+          [ -f "$CG_ACTION_PATH/$f" ] || fail "$f is missing from the action's files at $CG_ACTION_PATH."
+          cp "$CG_ACTION_PATH/$f" "$tools/$f"
+        done
+        echo "Guard taken from ${CG_ACTION_REPOSITORY:-this repository} at ${CG_ACTION_REF:-the local checkout}: $(python3 "$tools/change_guard.py" --version)"
+        echo "tools=$tools" >> "$GITHUB_OUTPUT"
+
+    - name: Read the skip label and reason
+      id: skip
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        CG_SKIP_LABEL: ${{ inputs.skip-label }}
+        CG_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        CG_PR_NUMBER: ${{ github.event.pull_request.number }}
+        CG_PR_BODY: ${{ github.event.pull_request.body }}
+      run: |
+        set -euo pipefail
+        has_label=$(python3 -c 'import json, os; labels = json.loads(os.environ.get("CG_LABELS") or "null") or []; print("true" if os.environ["CG_SKIP_LABEL"] and os.environ["CG_SKIP_LABEL"] in labels else "false")')
+        if [ "$has_label" != "true" ] || [ -z "$CG_PR_NUMBER" ]; then
+          echo "No skip label on this pull request."
+          echo "requested=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # Who added the label: the last "labeled" event for it in the pull request's history.
+        who=$(gh api "repos/$GITHUB_REPOSITORY/issues/$CG_PR_NUMBER/events" --paginate \
+                --jq ".[] | select(.event == \"labeled\" and .label.name == \"$CG_SKIP_LABEL\") | .actor.login" | tail -n 1) || who=""
+        reason=$(printf '%s\n' "$CG_PR_BODY" | tr -d '\r' \
+                | sed -n 's/^[[:space:]]*Change-Guard-Skip-Reason:[[:space:]]*//p' | head -n 1)
+        delim="cg_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+        {
+          echo "requested=true"
+          echo "by=${who}"
+          echo "reason<<${delim}"
+          printf '%s\n' "$reason"
+          echo "${delim}"
+        } >> "$GITHUB_OUTPUT"
+        echo "Skip label set by ${who:-unknown}; reason: ${reason:-none given}"
+
+    - name: Run the change guard
+      id: guard
+      shell: bash
+      env:
+        CG_TOOLS: ${{ steps.prepare.outputs.tools }}
+        CG_MODE: ${{ inputs.mode }}
+        CG_ENFORCE_LABEL: ${{ inputs.enforce-label }}
+        CG_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        CG_BASE: ${{ inputs.base }}
+        CG_HEAD: ${{ inputs.head }}
+        CG_CONFIG: ${{ inputs.config }}
+        CG_WORKDIR: ${{ inputs.working-directory }}
+        CG_PR_NUMBER: ${{ github.event.pull_request.number }}
+        CHANGE_GUARD_SKIP_BY: ${{ steps.skip.outputs.by }}
+        CHANGE_GUARD_SKIP_REASON: ${{ steps.skip.outputs.reason }}
+      run: |
+        set -uo pipefail
+        mode="$CG_MODE"
+        enforced=$(python3 -c 'import json, os; labels = json.loads(os.environ.get("CG_LABELS") or "null") or []; print("true" if os.environ["CG_ENFORCE_LABEL"] and os.environ["CG_ENFORCE_LABEL"] in labels else "false")')
+        if [ "$enforced" = "true" ]; then
+          mode=block
+          echo "The label $CG_ENFORCE_LABEL puts this pull request in blocking mode."
+        fi
+        if [ -n "$CG_PR_NUMBER" ]; then ref="pr-$CG_PR_NUMBER"; else ref="run-${GITHUB_RUN_ID:-local}"; fi
+        result_json="$CG_TOOLS/result.json"
+        # GitHub runs bash with -e; keep the exit code so the outputs are written first.
+        status=0
+        python3 "$CG_TOOLS/change_guard.py" \
+          --repo "$CG_WORKDIR" \
+          --base "$CG_BASE" --head "$CG_HEAD" \
+          --config "$CG_CONFIG" \
+          --mode "$mode" \
+          --ref "$ref" \
+          --summary "$GITHUB_STEP_SUMMARY" \
+          --result-json "$result_json" || status=$?
+        if [ -f "$result_json" ]; then
+          python3 - "$result_json" <<'PY'
+        import json, os, sys
+        with open(sys.argv[1], encoding="utf-8") as fh:
+            data = json.load(fh)
+        delim = "cg_" + os.urandom(8).hex()
+        values = {
+            "result": data.get("result") or "",
+            "cause": data.get("cause") or "",
+            "mode": data.get("mode") or "",
+            "blocks": "true" if data.get("blocks") else "false",
+            "log-line": data.get("log_line") or "",
+        }
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+            for key, value in values.items():
+                out.write("%s<<%s\n%s\n%s\n" % (key, delim, " ".join(value.splitlines()), delim))
+        print("log line: " + values["log-line"])
+        PY
+        else
+          echo "::error title=change-guard::The guard wrote no result file, so this run has no verdict."
+          [ "$status" -ne 0 ] || status=2
+        fi
+        exit "$status"

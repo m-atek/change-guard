@@ -1,0 +1,30 @@
+{
+  "_comment": "Demo project, no real data. PHP with PHPUnit 11 through Composer. prepare runs once, before the base commit: it installs the dependencies and writes composer.lock.",
+  "runner": "PHPUnit 11, JUnit XML log",
+  "prepare": "composer install --no-interaction --no-progress",
+  "variants": [
+    {
+      "branch": "4-new-function-call-only",
+      "name": "4-new-function-call-only, --fail-on-risky",
+      "config": {
+        "test_command": "vendor/bin/phpunit --bootstrap vendor/autoload.php --fail-on-risky --log-junit {report} {files}"
+      },
+      "expect": [
+        "STOPPED",
+        "test-fails-on-head"
+      ]
+    },
+    {
+      "branch": "5-new-function-real-test",
+      "name": "5-new-function-real-test, --fail-on-risky",
+      "config": {
+        "test_command": "vendor/bin/phpunit --bootstrap vendor/autoload.php --fail-on-risky --log-junit {report} {files}"
+      },
+      "expect": [
+        "PASSED",
+        "ok-unproven"
+      ]
+    }
+  ],
+  "_variants": "PHPUnit marks a test without assertions as risky; with --fail-on-risky the call-only test fails on the head and the change is stopped, while the test with an assertion still passes."
+}

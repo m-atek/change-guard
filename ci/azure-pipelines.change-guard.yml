@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Expeditious Software
+#
+# Change guard as a plain command step (Azure DevOps Pipelines, Azure Repos or
+# GitHub pull requests). Add the job to azure-pipelines.yml and make the
+# pipeline a required "Build validation" in the branch policy of the target
+# branch. change_guard.py and cg_unittest_report.py sit in tools/change-guard/,
+# change-guard.json at the root, committed to the target branch.
+# Not run on Azure DevOps yet: see docs/ci-platforms.md.
+#
+# The pull request does not choose its own judge (version 0.2.1): the guard and
+# its reporter come from the target branch (git show) and run from a temporary
+# folder outside the checkout, and the guard reads change-guard.json from the
+# target branch. The pipeline YAML itself comes from the pull request branch:
+# protect it, tools/change-guard/ and change-guard.json with required
+# reviewers for those paths in the branch policy; that setting is yours to
+# make. Keep "Make secrets available to builds of forks" off and give this job
+# no secrets: the guard runs the pull request's own tests.
+#
+# Report-only by default. Blocking is one setting: the pipeline variable
+# CHANGE_GUARD_MODE = block (Edit, Variables).
+#
+# Skip step: queue the pull request build again by hand with the variable
+# CHANGE_GUARD_SKIP_REASON set at queue time (mark it "settable at queue time").
+# Who skipped is the person who queued that run (Build.RequestedFor); the reason
+# is the variable. Both go into the log line.
+
+jobs:
+  - job: change_guard
+    displayName: change-guard
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+      - checkout: self
+        fetchDepth: 0
+      - script: |
+          set -e
+          # Pipeline variables arrive as environment variables:
+          # CHANGE_GUARD_MODE, CHANGE_GUARD_SKIP_REASON, BUILD_REQUESTEDFOR.
+          export CHANGE_GUARD_MODE="${CHANGE_GUARD_MODE:-report}"
+          if [ -n "${CHANGE_GUARD_SKIP_REASON:-}" ]; then
+            export CHANGE_GUARD_SKIP_BY="${BUILD_REQUESTEDFOR}"
+          else
+            unset CHANGE_GUARD_SKIP_REASON
+          fi
+          target="${SYSTEM_PULLREQUEST_TARGETBRANCH#refs/heads/}"
+          git fetch --no-tags origin "+refs/heads/${target}:refs/remotes/origin/${target}"
+          CG_DIR="$(mktemp -d)"
+          for f in change_guard.py cg_unittest_report.py; do
+            if git cat-file -e "origin/${target}:tools/change-guard/$f" 2>/dev/null; then
+              git show "origin/${target}:tools/change-guard/$f" > "$CG_DIR/$f"
+            else
+              echo "tools/change-guard/$f is not on ${target} yet, so this run uses the copy in the pull request (only right for the pull request that installs the guard)."
+              cp "tools/change-guard/$f" "$CG_DIR/$f"
+            fi
+          done
+          python3 "$CG_DIR/change_guard.py" \
+            --base "origin/${target}" \
+            --head "${SYSTEM_PULLREQUEST_SOURCECOMMITID}" \
+            --config change-guard.json \
+            --ref "pr-${SYSTEM_PULLREQUEST_PULLREQUESTID}"
+        displayName: Run the change guard
+      - publish: .change-guard/runs.log
+        artifact: change-guard-log-$(System.JobAttempt)
+        condition: always()
+        continueOnError: true

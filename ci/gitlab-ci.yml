@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Expeditious Software
+#
+# Change guard as a merge request job (GitLab CI).
+# Add to .gitlab-ci.yml (or include this file), with change_guard.py and
+# cg_unittest_report.py in tools/change-guard/ and change-guard.json at the
+# root, committed to the target branch. Not run on GitLab yet: see docs/ci-platforms.md.
+#
+# Report-only by default. Blocking is one setting: the project CI/CD variable
+# CHANGE_GUARD_MODE = block (Settings, CI/CD, Variables). A project variable
+# takes precedence over the default written below. To make the job required,
+# turn on "Pipelines must succeed" for merge requests.
+# The label "change-guard-enforce" puts one merge request in blocking mode for
+# a trial run or a demonstration. It can only make the guard stricter.
+#
+# Skip step: add the label "change-guard-skip" to the merge request AND a line
+#   Change-Guard-Skip-Reason: <why, at least 10 characters>
+# in its description, then run the pipeline again (a label change alone does
+# not start a pipeline). Who skipped: with a project access token in the masked
+# variable CHANGE_GUARD_API_TOKEN (scope read_api) the job reads who added the
+# label; without it, it records the user who started the pipeline and says so.
+#
+# The merge request does not choose its own judge (version 0.2.1): the guard and
+# its reporter come from the base commit (git show) and run from a temporary
+# folder outside the checkout, and the guard reads change-guard.json from the
+# base commit. GitLab takes .gitlab-ci.yml from the merge request's own branch,
+# so protect it, tools/change-guard/ and change-guard.json with a CODEOWNERS
+# rule and code owner approval in the protected branch settings; that setting
+# is yours to make. Give this job no secrets other than the read-only
+# CHANGE_GUARD_API_TOKEN, which the guard never passes to the tests.
+
+change-guard:
+  stage: test
+  # Use the image your tests already run in. It needs git and python3.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    GIT_DEPTH: "0"
+    CHANGE_GUARD_MODE: "report"
+  script:
+    - |
+      if printf ',%s,' "$CI_MERGE_REQUEST_LABELS" | grep -q ',change-guard-enforce,'; then
+        export CHANGE_GUARD_MODE=block
+      fi
+      if printf ',%s,' "$CI_MERGE_REQUEST_LABELS" | grep -q ',change-guard-skip,'; then
+        who=""
+        if [ -n "$CHANGE_GUARD_API_TOKEN" ]; then
+          who=$(python3 -c 'import json,os,urllib.request
+      url="%s/projects/%s/merge_requests/%s/resource_label_events?per_page=100" % (os.environ["CI_API_V4_URL"], os.environ["CI_PROJECT_ID"], os.environ["CI_MERGE_REQUEST_IID"])
+      req=urllib.request.Request(url, headers={"PRIVATE-TOKEN": os.environ["CHANGE_GUARD_API_TOKEN"]})
+      ev=[e for e in json.load(urllib.request.urlopen(req)) if e.get("action")=="add" and (e.get("label") or {}).get("name")=="change-guard-skip"]
+      print(ev[-1]["user"]["username"] if ev else "")' || true)
+        fi
+        if [ -z "$who" ]; then who="${GITLAB_USER_LOGIN} (pipeline user)"; fi
+        export CHANGE_GUARD_SKIP_BY="$who"
+        export CHANGE_GUARD_SKIP_REASON="$(printf '%s\n' "$CI_MERGE_REQUEST_DESCRIPTION" | tr -d '\r' | sed -n 's/^[[:space:]]*Change-Guard-Skip-Reason:[[:space:]]*//p' | head -n 1)"
+      fi
+    - |
+      CG_DIR="$(mktemp -d)"
+      for f in change_guard.py cg_unittest_report.py; do
+        if git cat-file -e "$CI_MERGE_REQUEST_DIFF_BASE_SHA:tools/change-guard/$f" 2>/dev/null; then
+          git show "$CI_MERGE_REQUEST_DIFF_BASE_SHA:tools/change-guard/$f" > "$CG_DIR/$f"
+        else
+          echo "tools/change-guard/$f is not on the base commit yet, so this run uses the copy in the merge request (only right for the merge request that installs the guard)."
+          cp "tools/change-guard/$f" "$CG_DIR/$f"
+        fi
+      done
+    - >
+      python3 "$CG_DIR/change_guard.py"
+      --base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+      --head "$CI_COMMIT_SHA"
+      --config change-guard.json
+      --ref "mr-$CI_MERGE_REQUEST_IID"
+  artifacts:
+    when: always
+    paths:
+      - .change-guard/runs.log
+    expire_in: 90 days

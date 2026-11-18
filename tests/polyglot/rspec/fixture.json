@@ -1,0 +1,5 @@
+{
+  "_comment": "Demo project, no real data. Ruby with RSpec through Bundler. prepare runs once, before the base commit: it installs the gems and writes Gemfile.lock.",
+  "runner": "RSpec 3, JSON formatter, Bundler",
+  "prepare": "bundle install"
+}

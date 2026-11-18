@@ -1,0 +1,5 @@
+{
+  "_comment": "Demo project, no real data. Swift Package Manager with XCTest on Linux. prepare builds the package and its tests once to check the toolchain.",
+  "runner": "swift test with XCTest, xUnit XML output",
+  "prepare": "swift build --build-tests"
+}

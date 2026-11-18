@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Expeditious Software
+//
+// Change guard as a plain command step (Jenkins, multibranch pipeline with
+// pull request discovery). Paste the stage into the Jenkinsfile. change_guard.py
+// and cg_unittest_report.py sit in tools/change-guard/, change-guard.json at the
+// root, committed to the target branch. Not run on Jenkins yet: see docs/ci-platforms.md.
+//
+// The pull request does not choose its own judge (version 0.2.1): the guard and
+// its reporter come from the target branch (git show) and run from a temporary
+// folder outside the checkout, and the guard reads change-guard.json from the
+// target branch. Jenkins may take the Jenkinsfile itself from the pull request
+// for trusted contributors: protect it, tools/change-guard/ and
+// change-guard.json with a CODEOWNERS rule and code owner review in the code
+// host; that setting is yours to make. Bind no credentials to pull request
+// builds: the guard runs the pull request's own tests.
+//
+// Report-only by default. Blocking is one setting: the global or folder
+// environment variable CHANGE_GUARD_MODE = block. Make the pull request status
+// that Jenkins reports for this build required in the code host.
+//
+// Skip step: rebuild the pull request with the parameters CHANGE_GUARD_SKIP_REASON
+// filled in. Who skipped is the user who started that build (Jenkins records it);
+// the reason is the parameter. Both go into the log line.
+//
+// The clone must hold the target branch and full history (no shallow clone:
+// in the checkout behaviours, turn off "shallow clone" or fetch it as below).
+
+pipeline {
+  agent any
+  parameters {
+    string(name: 'CHANGE_GUARD_SKIP_REASON', defaultValue: '', description: 'Only to skip the change guard once: why (at least 10 characters). Recorded.')
+  }
+  stages {
+    stage('change-guard') {
+      when { changeRequest() }
+      steps {
+        script {
+          def starter = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+          env.CG_STARTED_BY = starter ? starter[0].userId : ''
+          env.CG_MODE = env.CHANGE_GUARD_MODE ?: 'report'
+        }
+        sh '''
+          git fetch --no-tags --unshallow origin 2>/dev/null || true
+          git fetch --no-tags origin "+refs/heads/${CHANGE_TARGET}:refs/remotes/origin/${CHANGE_TARGET}"
+          if [ -n "${CHANGE_GUARD_SKIP_REASON}" ]; then
+            export CHANGE_GUARD_SKIP_BY="${CG_STARTED_BY:-unknown}"
+            export CHANGE_GUARD_SKIP_REASON
+          else
+            unset CHANGE_GUARD_SKIP_REASON
+          fi
+          CG_DIR="$(mktemp -d)"
+          for f in change_guard.py cg_unittest_report.py; do
+            if git cat-file -e "origin/${CHANGE_TARGET}:tools/change-guard/$f" 2>/dev/null; then
+              git show "origin/${CHANGE_TARGET}:tools/change-guard/$f" > "$CG_DIR/$f"
+            else
+              echo "tools/change-guard/$f is not on ${CHANGE_TARGET} yet, so this build uses the copy in the pull request (only right for the pull request that installs the guard)."
+              cp "tools/change-guard/$f" "$CG_DIR/$f"
+            fi
+          done
+          CHANGE_GUARD_MODE="${CG_MODE}" python3 "$CG_DIR/change_guard.py" \
+            --base "origin/${CHANGE_TARGET}" --head HEAD \
+            --config change-guard.json --ref "PR-${CHANGE_ID}"
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: '.change-guard/runs.log', allowEmptyArchive: true
+        }
+      }
+    }
+  }
+}

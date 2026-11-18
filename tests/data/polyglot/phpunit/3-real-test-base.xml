@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Shop\Tests\BulkTest" file="<worktree>/tests/BulkTest.php" tests="2" assertions="2" errors="0" failures="1" skipped="0" time="0.004501">
+    <testcase name="testLeavesASmallOrderAtFullPrice" file="<worktree>/tests/BulkTest.php" line="12" class="Shop\Tests\BulkTest" classname="Shop.Tests.BulkTest" assertions="1" time="0.001428"/>
+    <testcase name="testGivesTenItemsTenPercentOff" file="<worktree>/tests/BulkTest.php" line="17" class="Shop\Tests\BulkTest" classname="Shop.Tests.BulkTest" assertions="1" time="0.003073">
+      <failure type="PHPUnit\Framework\ExpectationFailedException">Shop\Tests\BulkTest::testGivesTenItemsTenPercentOff
+Failed asserting that 10000 is identical to 9000.
+
+<worktree>/tests/BulkTest.php:19</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

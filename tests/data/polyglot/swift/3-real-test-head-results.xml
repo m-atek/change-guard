@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<testsuites>
+<testsuite name="TestResults" errors="0" tests="2" failures="0" time="0.034116098">
+<testcase classname="ShopTests.BulkTests" name="testLeavesASmallOrderAtFullPrice" time="0.017047167">
+</testcase>
+<testcase classname="ShopTests.BulkTests" name="testGivesTenItemsTenPercentOff" time="0.017068931">
+</testcase>
+</testsuite>
+</testsuites>

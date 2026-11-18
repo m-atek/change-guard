@@ -1,0 +1,5 @@
+{
+  "_comment": "Demo project, no real data. Java 21 with Maven and JUnit 5. prepare runs once, before the base commit: it downloads the plugins and JUnit into the local Maven repository.",
+  "runner": "Maven Surefire with JUnit 5 (Java 21)",
+  "prepare": "mvn -B -q test"
+}

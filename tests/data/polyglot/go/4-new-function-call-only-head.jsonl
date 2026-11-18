@@ -1,0 +1,12 @@
+{"Time":"2026-11-18T15:28:34.857232467Z","Action":"start","Package":"example.com/demoshop/shop"}
+{"Time":"2026-11-18T15:28:34.858856221Z","Action":"run","Package":"example.com/demoshop/shop","Test":"TestFormatPrice"}
+{"Time":"2026-11-18T15:28:34.858918324Z","Action":"output","Package":"example.com/demoshop/shop","Test":"TestFormatPrice","Output":"=== RUN   TestFormatPrice\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.858940247Z","Action":"output","Package":"example.com/demoshop/shop","Test":"TestFormatPrice","Output":"--- PASS: TestFormatPrice (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.858944093Z","Action":"pass","Package":"example.com/demoshop/shop","Test":"TestFormatPrice","Elapsed":0}
+{"Time":"2026-11-18T15:28:34.858950182Z","Action":"run","Package":"example.com/demoshop/shop","Test":"TestTotalMultipliesTheUnitPrice"}
+{"Time":"2026-11-18T15:28:34.858952846Z","Action":"output","Package":"example.com/demoshop/shop","Test":"TestTotalMultipliesTheUnitPrice","Output":"=== RUN   TestTotalMultipliesTheUnitPrice\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.858957183Z","Action":"output","Package":"example.com/demoshop/shop","Test":"TestTotalMultipliesTheUnitPrice","Output":"--- PASS: TestTotalMultipliesTheUnitPrice (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.858960197Z","Action":"pass","Package":"example.com/demoshop/shop","Test":"TestTotalMultipliesTheUnitPrice","Elapsed":0}
+{"Time":"2026-11-18T15:28:34.858962991Z","Action":"output","Package":"example.com/demoshop/shop","Output":"PASS\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.859150964Z","Action":"output","Package":"example.com/demoshop/shop","Output":"ok  \texample.com/demoshop/shop\t0.002s\n"}
+{"Time":"2026-11-18T15:28:34.859162902Z","Action":"pass","Package":"example.com/demoshop/shop","Elapsed":0.002}

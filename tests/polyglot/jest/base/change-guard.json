@@ -1,0 +1,10 @@
+{
+  "_comment": "Demo project, no real data. JavaScript with Jest: each worktree installs with npm ci, and Jest writes its JSON report.",
+  "protected": ["src/**"],
+  "tests": ["tests/**/*.test.js"],
+  "exempt": ["*.md", "package-lock.json"],
+  "setup_command": "npm ci --no-audit --no-fund --loglevel=error",
+  "test_command": "npx jest --ci --runTestsByPath --json --outputFile={report} {files}",
+  "report_format": "jest-json",
+  "mode": "report"
+}

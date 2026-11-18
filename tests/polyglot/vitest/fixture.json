@@ -1,0 +1,30 @@
+{
+  "_comment": "Demo project, no real data. TypeScript with Vitest. prepare runs once, before the base commit: it installs the dependencies and writes package-lock.json.",
+  "runner": "Vitest (TypeScript), npm",
+  "prepare": "npm install --no-audit --no-fund --loglevel=error",
+  "variants": [
+    {
+      "branch": "4-new-function-call-only",
+      "name": "4-new-function-call-only, --expect.requireAssertions",
+      "config": {
+        "test_command": "npx vitest run --expect.requireAssertions --reporter=default --reporter=json --outputFile.json={report} {files}"
+      },
+      "expect": [
+        "STOPPED",
+        "test-fails-on-head"
+      ]
+    },
+    {
+      "branch": "5-new-function-real-test",
+      "name": "5-new-function-real-test, --expect.requireAssertions",
+      "config": {
+        "test_command": "npx vitest run --expect.requireAssertions --reporter=default --reporter=json --outputFile.json={report} {files}"
+      },
+      "expect": [
+        "PASSED",
+        "ok-unproven"
+      ]
+    }
+  ],
+  "_variants": "With Vitest's requireAssertions option a test that makes no assertion fails; the call-only test then fails on the head and the change is stopped, while the test with an assertion still passes."
+}

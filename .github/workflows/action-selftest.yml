@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Expeditious Software
+#
+# Tests the packaging: runs this repository's own action.yml (uses: ./) on the
+# small fixture in tests/fixtures/action-selftest/ on every push and pull
+# request, and checks that the three seeded cases give the expected results in
+# blocking mode and that report mode keeps the check green. It only reads the
+# repository and needs no secrets. The skip step is switched off here (it needs
+# a real pull request with a label); docs/github-action.md says how to try it.
+
+name: action-selftest
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    name: action on the fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Versions
+        run: |
+          python3 --version
+          git --version
+
+      - name: Build the fixture repository
+        id: fixture
+        run: bash tests/fixtures/action-selftest/build.sh "$RUNNER_TEMP/cg-fixture"
+
+      - name: "Case 1: a change with no test (block)"
+        id: no_test
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/cg-fixture
+          base: ${{ steps.fixture.outputs.base }}
+          head: ${{ steps.fixture.outputs.no_test }}
+          mode: block
+          skip-label: ''
+          enforce-label: ''
+
+      - name: "Case 2: a test that also passes without the change (block)"
+        id: test_passes_on_base
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/cg-fixture
+          base: ${{ steps.fixture.outputs.base }}
+          head: ${{ steps.fixture.outputs.test_passes_on_base }}
+          mode: block
+          skip-label: ''
+          enforce-label: ''
+
+      - name: "Case 3: a test that checks the change (block)"
+        id: real_test
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/cg-fixture
+          base: ${{ steps.fixture.outputs.base }}
+          head: ${{ steps.fixture.outputs.real_test }}
+          mode: block
+          skip-label: ''
+          enforce-label: ''
+
+      - name: "Case 4: a change with no test (report)"
+        id: report_only
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/cg-fixture
+          base: ${{ steps.fixture.outputs.base }}
+          head: ${{ steps.fixture.outputs.no_test }}
+          mode: report
+          skip-label: ''
+          enforce-label: ''
+
+      - name: Check the results
+        env:
+          FIXTURE: ${{ runner.temp }}/cg-fixture
+          C1: ${{ steps.no_test.outcome }} ${{ steps.no_test.outputs.result }} ${{ steps.no_test.outputs.cause }} ${{ steps.no_test.outputs.mode }} ${{ steps.no_test.outputs.blocks }}
+          C2: ${{ steps.test_passes_on_base.outcome }} ${{ steps.test_passes_on_base.outputs.result }} ${{ steps.test_passes_on_base.outputs.cause }} ${{ steps.test_passes_on_base.outputs.mode }} ${{ steps.test_passes_on_base.outputs.blocks }}
+          C3: ${{ steps.real_test.outcome }} ${{ steps.real_test.outputs.result }} ${{ steps.real_test.outputs.cause }} ${{ steps.real_test.outputs.mode }} ${{ steps.real_test.outputs.blocks }}
+          C4: ${{ steps.report_only.outcome }} ${{ steps.report_only.outputs.result }} ${{ steps.report_only.outputs.cause }} ${{ steps.report_only.outputs.mode }} ${{ steps.report_only.outputs.blocks }}
+          L1: ${{ steps.no_test.outputs.log-line }}
+          L3: ${{ steps.real_test.outputs.log-line }}
+        run: |
+          failed=0
+          check() {
+            if [ "$2" = "$3" ]; then
+              echo "ok      $1: $2"
+            else
+              echo "::error title=action-selftest::$1: expected '$3', got '$2'"
+              failed=1
+            fi
+          }
+          check "case 1" "$C1" "failure STOPPED no-test block true"
+          check "case 2" "$C2" "failure STOPPED test-passes-on-base block true"
+          check "case 3" "$C3" "success PASSED ok block false"
+          check "case 4" "$C4" "success STOPPED no-test report false"
+          case "$L1" in cg2*STOPPED*no-test*) echo "ok      log line of case 1 is in the cg2 format" ;;
+            *) echo "::error title=action-selftest::log line of case 1 is missing or not cg2: '$L1'"; failed=1 ;; esac
+          case "$L3" in cg2*PASSED*ok*) echo "ok      log line of case 3 is in the cg2 format" ;;
+            *) echo "::error title=action-selftest::log line of case 3 is missing or not cg2: '$L3'"; failed=1 ;; esac
+          lines=$(wc -l < "$FIXTURE/.change-guard/runs.log" | tr -d ' ')
+          check "log file lines" "$lines" "4"
+          exit "$failed"

@@ -1,0 +1,9 @@
+{
+  "_comment": "Demo project, no real data. Go: go test runs the packages of the changed test files and writes its JSON events to the report.",
+  "protected": ["**/*.go"],
+  "tests": ["**/*_test.go"],
+  "exempt": ["*.md", "go.sum"],
+  "test_command": "go test -count=1 -json {dirs} > {report}",
+  "report_format": "go-json",
+  "mode": "report"
+}

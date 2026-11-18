@@ -1,0 +1,24 @@
+<worktree>/src/test/java/shop/FormatTest.java:8: error: cannot find symbol
+        Pricing.formatPrice(1250);
+               ^
+  symbol:   method formatPrice(int)
+  location: class Pricing
+1 error
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileTestJava' (registered by plugin class 'org.gradle.api.plugins.JavaBasePlugin').
+> Compilation failed; see the compiler output below.
+  <worktree>/src/test/java/shop/FormatTest.java:8: error: cannot find symbol
+          Pricing.formatPrice(1250);
+                 ^
+    symbol:   method formatPrice(int)
+    location: class Pricing
+  1 error
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+
+BUILD FAILED in 8s

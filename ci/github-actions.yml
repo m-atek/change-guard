@@ -1,0 +1,133 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Expeditious Software
+#
+# Change guard as a required check on pull requests (GitHub Actions).
+# Copy to .github/workflows/change-guard.yml in your repository, with
+# change_guard.py and cg_unittest_report.py in tools/change-guard/ and
+# change-guard.json at the repository root, all three committed to the base
+# branch.
+#
+# Report-only by default. Blocking is one setting: the repository variable
+# CHANGE_GUARD_MODE = block (Settings, Secrets and variables, Actions, Variables).
+# Make the job "change-guard" a required status check once (branch rules);
+# in report-only mode it always passes, so requiring it from day one is safe.
+#
+# Trial runs and demonstrations: the label "change-guard-enforce" puts one pull
+# request in blocking mode. It can only make the guard stricter, never looser.
+#
+# Skip step: add the label "change-guard-skip" to the pull request AND a line
+#   Change-Guard-Skip-Reason: <why, at least 10 characters>
+# in the pull request description. The guard records who added the label (from
+# the pull request's own event history) and the reason. A label without a
+# reason is refused, and so is a label whose author cannot be read (the guard
+# then fails closed). Removing the label ends the skip on the next run.
+#
+# The pull request does not choose its own judge (version 0.2.1). The guard and
+# its reporter are taken from the base branch with git show and run from
+# $RUNNER_TEMP, outside the pull request's checkout, and the guard reads
+# change-guard.json from the base commit. Only the pull request that installs
+# the guard, when the base branch has no copy yet, runs the copy it brings, and
+# the step says so. GitHub still takes this workflow file from the pull
+# request: protect .github/workflows/, tools/change-guard/ and
+# change-guard.json with a CODEOWNERS rule and "require review from code
+# owners" in the branch rules. That setting is yours to make.
+#
+# Secrets: the guard runs the pull request's own tests. Give this job no
+# secrets, keep the read-only token below, and never change the trigger to
+# pull_request_target. The guard passes the tests a reduced environment
+# (docs/how-it-works.md) and stops a run whose tests write to the CI files.
+# First run on GitHub on 18 November 2026, on a hosted Ubuntu runner, with the
+# demonstration project: see docs/ci-platforms.md. The action versions below are the
+# ones that ran without a deprecation warning that day; pin them to a commit
+# if your policy asks for that.
+
+name: change-guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: change-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  change-guard:
+    name: change-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out with full history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Put the steps your tests need here, exactly as in your normal test job
+      # (for example actions/setup-node and npm ci, or actions/setup-java).
+
+      - name: Read the skip label and reason
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'change-guard-skip') }}
+        run: |
+          if [ "$HAS_SKIP_LABEL" != "true" ]; then
+            echo "No skip label on this pull request."
+            exit 0
+          fi
+          who=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/events" --paginate \
+                  --jq '.[] | select(.event == "labeled" and .label.name == "change-guard-skip") | .actor.login' | tail -n 1)
+          reason=$(printf '%s\n' "$PR_BODY" | tr -d '\r' \
+                  | sed -n 's/^[[:space:]]*Change-Guard-Skip-Reason:[[:space:]]*//p' | head -n 1)
+          {
+            echo "CHANGE_GUARD_SKIP_BY=${who}"
+            echo "CHANGE_GUARD_SKIP_REASON<<CG_EOF"
+            echo "$reason"
+            echo "CG_EOF"
+          } >> "$GITHUB_ENV"
+          echo "Skip label set by ${who:-unknown}; reason: ${reason:-none given}"
+
+      - name: Take the guard from the base branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/change-guard"
+          for f in change_guard.py cg_unittest_report.py; do
+            if git cat-file -e "$BASE_SHA:tools/change-guard/$f" 2>/dev/null; then
+              git show "$BASE_SHA:tools/change-guard/$f" > "$RUNNER_TEMP/change-guard/$f"
+            else
+              echo "::warning title=change-guard::tools/change-guard/$f is not on the base branch yet, so this run uses the copy in the pull request. That is only right for the pull request that installs the guard."
+              cp "tools/change-guard/$f" "$RUNNER_TEMP/change-guard/$f"
+            fi
+          done
+
+      - name: Run the change guard
+        env:
+          CHANGE_GUARD_MODE: ${{ contains(github.event.pull_request.labels.*.name, 'change-guard-enforce') && 'block' || vars.CHANGE_GUARD_MODE || 'report' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python3 "$RUNNER_TEMP/change-guard/change_guard.py" \
+            --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --config change-guard.json \
+            --ref "pr-$PR_NUMBER" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      # The log line of every run. To keep the log for longer than the
+      # artifact retention, add a step that ships .change-guard/runs.log
+      # to a store you choose (see "The log" in docs/how-it-works.md).
+      - name: Keep the log line
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: change-guard-log-pr-${{ github.event.pull_request.number }}-run-${{ github.run_attempt }}-${{ github.run_id }}
+          path: .change-guard/runs.log
+          if-no-files-found: warn
+          retention-days: 90

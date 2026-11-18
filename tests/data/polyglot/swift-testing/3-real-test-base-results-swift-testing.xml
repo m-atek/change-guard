@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="TestResults" errors="0" tests="2" failures="1" skipped="0" time="0.001221375">
+    <testcase classname="ShopTests.BulkTests" name="givesTenItemsTenPercentOff()" time="0.00079946" >
+      <failure message="Expectation failed: Pricing.total(1000, 10) == 9000 (error)" />
+    </testcase>
+    <testcase classname="ShopTests.BulkTests" name="leavesASmallOrderAtFullPrice()" time="0.000258178" />
+  </testsuite>
+</testsuites>

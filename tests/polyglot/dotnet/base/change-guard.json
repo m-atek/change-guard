@@ -1,0 +1,11 @@
+{
+  "_comment": "Demo project, no real data. C# with xUnit: dotnet test runs the test classes named like the changed test files and writes a TRX file into TestResults/.",
+  "protected": ["src/**"],
+  "tests": ["tests/**/*Tests.cs"],
+  "exempt": ["*.md"],
+  "test_command": "dotnet test tests/Shop.Tests/Shop.Tests.csproj --nologo --logger trx --results-directory TestResults --filter {dotnet_filter}",
+  "report_format": "dotnet-trx",
+  "report_path": "TestResults",
+  "pass_env": ["DOTNET_*", "NUGET_*"],
+  "mode": "report"
+}

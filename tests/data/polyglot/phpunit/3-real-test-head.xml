@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Shop\Tests\BulkTest" file="<worktree>/tests/BulkTest.php" tests="2" assertions="2" errors="0" failures="0" skipped="0" time="0.001715">
+    <testcase name="testLeavesASmallOrderAtFullPrice" file="<worktree>/tests/BulkTest.php" line="12" class="Shop\Tests\BulkTest" classname="Shop.Tests.BulkTest" assertions="1" time="0.001644"/>
+    <testcase name="testGivesTenItemsTenPercentOff" file="<worktree>/tests/BulkTest.php" line="17" class="Shop\Tests\BulkTest" classname="Shop.Tests.BulkTest" assertions="1" time="0.000071"/>
+  </testsuite>
+</testsuites>

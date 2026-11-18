@@ -1,0 +1,10 @@
+{
+  "_comment": "Demo project, no real data. TypeScript with Vitest: each worktree installs with npm ci, and Vitest writes its Jest-compatible JSON report.",
+  "protected": ["src/**"],
+  "tests": ["tests/**/*.test.ts"],
+  "exempt": ["*.md", "package-lock.json"],
+  "setup_command": "npm ci --no-audit --no-fund --loglevel=error",
+  "test_command": "npx vitest run --reporter=default --reporter=json --outputFile.json={report} {files}",
+  "report_format": "jest-json",
+  "mode": "report"
+}

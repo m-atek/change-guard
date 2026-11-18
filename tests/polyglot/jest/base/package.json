@@ -1,0 +1,12 @@
+{
+  "name": "demo-shop-jest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Demo project, no real data.",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "29.7.0"
+  }
+}

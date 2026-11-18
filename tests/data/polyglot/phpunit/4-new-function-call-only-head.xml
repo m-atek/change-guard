@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Shop\Tests\FormatTest" file="<worktree>/tests/FormatTest.php" tests="1" assertions="0" errors="0" failures="0" skipped="0" time="0.001179">
+    <testcase name="testFormatsAPrice" file="<worktree>/tests/FormatTest.php" line="12" class="Shop\Tests\FormatTest" classname="Shop.Tests.FormatTest" assertions="0" time="0.001179"/>
+  </testsuite>
+</testsuites>

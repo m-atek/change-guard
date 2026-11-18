@@ -1,0 +1,5 @@
+{
+  "_comment": "Demo project, no real data. Java 21 with Gradle and JUnit 5. prepare runs the base tests once, which downloads JUnit into the Gradle user home.",
+  "runner": "Gradle with JUnit 5 (Java 21)",
+  "prepare": "gradle --no-daemon --console=plain -q test"
+}

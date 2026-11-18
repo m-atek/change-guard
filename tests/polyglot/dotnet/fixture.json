@@ -1,0 +1,5 @@
+{
+  "_comment": "Demo project, no real data. C# with .NET 10 and xUnit 2. prepare restores the NuGet packages and builds once.",
+  "runner": "dotnet test with xUnit, TRX logger",
+  "prepare": "dotnet test tests/Shop.Tests/Shop.Tests.csproj --nologo -v q"
+}

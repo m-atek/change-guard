@@ -1,0 +1,10 @@
+{
+  "_comment": "Demo project, no real data. PHP with PHPUnit: each worktree installs with composer install, and PHPUnit writes JUnit XML.",
+  "protected": ["src/**"],
+  "tests": ["tests/**/*Test.php"],
+  "exempt": ["*.md", "composer.lock"],
+  "setup_command": "composer install --no-interaction --no-progress --quiet",
+  "test_command": "vendor/bin/phpunit --bootstrap vendor/autoload.php --log-junit {report} {files}",
+  "report_format": "junit-xml",
+  "mode": "report"
+}

@@ -1,0 +1,16 @@
+{"Time":"2026-11-18T15:28:34.506732292Z","Action":"start","Package":"example.com/demoshop/shop"}
+{"Time":"2026-11-18T15:28:34.508334674Z","Action":"run","Package":"example.com/demoshop/shop","Test":"TestBulkSmallOrderAtFullPrice"}
+{"Time":"2026-11-18T15:28:34.508381775Z","Action":"output","Package":"example.com/demoshop/shop","Test":"TestBulkSmallOrderAtFullPrice","Output":"=== RUN   TestBulkSmallOrderAtFullPrice\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.50850133Z","Action":"output","Package":"example.com/demoshop/shop","Test":"TestBulkSmallOrderAtFullPrice","Output":"--- PASS: TestBulkSmallOrderAtFullPrice (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.508507289Z","Action":"pass","Package":"example.com/demoshop/shop","Test":"TestBulkSmallOrderAtFullPrice","Elapsed":0}
+{"Time":"2026-11-18T15:28:34.508515091Z","Action":"run","Package":"example.com/demoshop/shop","Test":"TestBulkTenItemsTenPercentOff"}
+{"Time":"2026-11-18T15:28:34.508517454Z","Action":"output","Package":"example.com/demoshop/shop","Test":"TestBulkTenItemsTenPercentOff","Output":"=== RUN   TestBulkTenItemsTenPercentOff\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.508520229Z","Action":"output","Package":"example.com/demoshop/shop","Test":"TestBulkTenItemsTenPercentOff","Output":"--- PASS: TestBulkTenItemsTenPercentOff (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.508522512Z","Action":"pass","Package":"example.com/demoshop/shop","Test":"TestBulkTenItemsTenPercentOff","Elapsed":0}
+{"Time":"2026-11-18T15:28:34.508524685Z","Action":"run","Package":"example.com/demoshop/shop","Test":"TestTotalMultipliesTheUnitPrice"}
+{"Time":"2026-11-18T15:28:34.508526558Z","Action":"output","Package":"example.com/demoshop/shop","Test":"TestTotalMultipliesTheUnitPrice","Output":"=== RUN   TestTotalMultipliesTheUnitPrice\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.508528821Z","Action":"output","Package":"example.com/demoshop/shop","Test":"TestTotalMultipliesTheUnitPrice","Output":"--- PASS: TestTotalMultipliesTheUnitPrice (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.508531025Z","Action":"pass","Package":"example.com/demoshop/shop","Test":"TestTotalMultipliesTheUnitPrice","Elapsed":0}
+{"Time":"2026-11-18T15:28:34.508533018Z","Action":"output","Package":"example.com/demoshop/shop","Output":"PASS\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.50878484Z","Action":"output","Package":"example.com/demoshop/shop","Output":"ok  \texample.com/demoshop/shop\t0.002s\n"}
+{"Time":"2026-11-18T15:28:34.508792912Z","Action":"pass","Package":"example.com/demoshop/shop","Elapsed":0.002}

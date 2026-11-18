@@ -1,0 +1,6 @@
+{"ImportPath":"example.com/demoshop/shop [example.com/demoshop/shop.test]","Action":"build-output","Output":"# example.com/demoshop/shop [example.com/demoshop/shop.test]\n"}
+{"ImportPath":"example.com/demoshop/shop [example.com/demoshop/shop.test]","Action":"build-output","Output":"shop/format_test.go:6:2: undefined: FormatPrice\n"}
+{"ImportPath":"example.com/demoshop/shop [example.com/demoshop/shop.test]","Action":"build-fail"}
+{"Time":"2026-11-18T15:28:34.92757485Z","Action":"start","Package":"example.com/demoshop/shop"}
+{"Time":"2026-11-18T15:28:34.928226636Z","Action":"output","Package":"example.com/demoshop/shop","Output":"FAIL\texample.com/demoshop/shop [build failed]\n","OutputType":"frame"}
+{"Time":"2026-11-18T15:28:34.928239074Z","Action":"fail","Package":"example.com/demoshop/shop","Elapsed":0.001,"FailedBuild":"example.com/demoshop/shop [example.com/demoshop/shop.test]"}

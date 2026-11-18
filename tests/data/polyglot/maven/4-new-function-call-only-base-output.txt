@@ -1,0 +1,15 @@
+[ERROR] COMPILATION ERROR : 
+[ERROR] <worktree>/src/test/java/shop/FormatTest.java:[8,16] cannot find symbol
+  symbol:   method formatPrice(int)
+  location: class shop.Pricing
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.13.0:testCompile (default-testCompile) on project demo-shop: Compilation failure
+[ERROR] <worktree>/src/test/java/shop/FormatTest.java:[8,16] cannot find symbol
+[ERROR]   symbol:   method formatPrice(int)
+[ERROR]   location: class shop.Pricing
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

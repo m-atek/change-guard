@@ -1,0 +1,10 @@
+{
+  "_comment": "Demo project, no real data. Java with Maven and JUnit 5: Surefire runs the changed test classes and writes JUnit XML into target/surefire-reports.",
+  "protected": ["src/main/**"],
+  "tests": ["src/test/**/*Test.java"],
+  "exempt": ["*.md"],
+  "test_command": "mvn -B -q -Dsurefire.failIfNoSpecifiedTests=false -Dtest={classes_csv} test",
+  "report_format": "junit-xml",
+  "report_path": "target/surefire-reports",
+  "mode": "report"
+}

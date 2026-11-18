@@ -1,0 +1,5 @@
+{
+  "_comment": "Demo project, no real data. JavaScript (CommonJS) with Jest. prepare runs once, before the base commit: it installs the dependencies and writes package-lock.json.",
+  "runner": "Jest (JavaScript, CommonJS), npm",
+  "prepare": "npm install --no-audit --no-fund --loglevel=error"
+}
