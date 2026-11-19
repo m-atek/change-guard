@@ -16,7 +16,7 @@ A separate check of 0.3.2, done by an AI tool, found nothing blocking and five n
 - **C-N4 (a behaviour change since 0.3.1):** `--repo` on a bare clone is refused, as in 0.3.2, now with a true message: a bare repository is not supported; point `--repo` at a checkout or a linked worktree. In 0.3.1 a bare clone worked.
 - **C-N5:** the README names the creation times of the working copies among the signals a test written to lie can still read.
 - Texts: what remains of RC-N1 is stated in the README limits; which Python versions ran which version; the 0.3.2 runs on GitHub.
-- `VERSION` set to `0.3.3`. 257 unit tests; `seed_cases.py` unchanged and all as expected under Python 3.11.6 and 3.9.6. Version 0.3.3 had not run on GitHub when this was written.
+- `VERSION` set to `0.3.3`. 257 unit tests; `seed_cases.py` unchanged and all as expected under Python 3.11.6 and 3.9.6. Later the same day version 0.3.3 ran green in this repository's own workflows on GitHub's hosted Linux runner: the unit tests and seeded cases under Python 3.10 to 3.14, all eleven polyglot set-ups and the action's self-test with seven cases.
 
 ## 0.3.2, 19 November 2026: fixes from two re-audits of 0.3.1
 
@@ -52,7 +52,7 @@ The fixes:
 - **M10:** a 0.3.1 test no longer leaves temporary folders behind.
 - **Wording:** the verdict names missing files and names instead of an internal class name; the note on edited code reads plainly; the sentence of `base-error-unrelated` no longer says that the change does not explain the error.
 - **Texts:** the action's page, `SECURITY.md` and `action.yml` now say that a set-up step before the action can take over its steps; the README limits name what remains (a test without an assertion can pass as `ok` through an exception, added files laid over the base, the lock, the probe); the time budget is described as what it is; run numbers of private repositories are no longer cited.
-- `VERSION` set to `0.3.2`. 245 unit tests; `seed_cases.py` unchanged and all as expected under Python 3.11.6 and 3.9.6. These files have not run on GitHub at the time of writing; the workflows in `.github/workflows/` run them.
+- `VERSION` set to `0.3.2`. 245 unit tests; `seed_cases.py` unchanged and all as expected under Python 3.11.6 and 3.9.6. These files had not run on GitHub when this entry was written; they ran green there later the same day (see 0.3.3).
 
 ## 0.3.1, 18 November 2026: fixes from two audits of 0.3.0
 
