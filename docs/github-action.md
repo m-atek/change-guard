@@ -53,9 +53,11 @@ jobs:
 
       # Put the steps your tests need here, exactly as in your normal test job
       # (for example actions/setup-python and installing dependencies).
+      # A step that installs the pull request's dependencies runs the pull
+      # request's code with the whole job environment; prefer setup_command.
 
       - name: Change guard
-        uses: m-atek/change-guard@<full commit hash of the v0.3.1 release> # v0.3.1
+        uses: m-atek/change-guard@<full commit hash of the v0.3.2 release> # v0.3.2
         with:
           mode: ${{ vars.CHANGE_GUARD_MODE || 'report' }}
 
@@ -69,7 +71,7 @@ jobs:
           retention-days: 90
 ```
 
-Pin the action to the full commit hash of a release, with the version as a comment, as above. Replace `<full commit hash of the v0.3.1 release>` with the 40-character hash shown for the release tag; the workflow does not load with the text in angle brackets. A tag such as `v0.3.1` can be moved by whoever controls the repository; a full commit hash cannot. If your organisation uses workflow lockfiles, the lockfile records the commit for you. Pin `actions/checkout` and `actions/upload-artifact` the same way if your policy asks for it.
+Pin the action to the full commit hash of a release, with the version as a comment, as above. Replace `<full commit hash of the v0.3.2 release>` with the 40-character hash shown for the release tag; the workflow does not load with the text in angle brackets. A tag such as `v0.3.2` can be moved by whoever controls the repository; a full commit hash cannot. If your organisation uses workflow lockfiles, the lockfile records the commit for you. Pin `actions/checkout` and `actions/upload-artifact` the same way if your policy asks for it.
 
 **3. Open a pull request** with these two files. The target branch has no `change-guard.json` yet, so this one pull request is judged by the configuration it brings, and the output says so (note `config-from-head`). From the next pull request on, the configuration always comes from the target branch, so a pull request cannot change the rules it is judged by.
 
@@ -142,12 +144,12 @@ GitHub takes the workflow file from the pull request, so a pull request can chan
 | Input | Default | Meaning |
 |---|---|---|
 | `config` | `change-guard.json` | Configuration file, relative to `working-directory`, read from the base commit |
-| `mode` | `report` | `report` or `block`; wins over the `mode` key in the configuration |
+| `mode` | `report` | `report` or `block` (case and spaces around the value do not matter; any other value fails the check); wins over the `mode` key in the configuration |
 | `base` | the pull request's base commit | The guard compares against the merge base of `base` and `head` |
 | `head` | the pull request's head commit | The change to judge |
 | `skip-label` | `change-guard-skip` | Label that requests the recorded skip; empty turns the skip step off |
 | `enforce-label` | `change-guard-enforce` | Label that puts one pull request in blocking mode; empty turns it off |
-| `working-directory` | `.` | Folder of the repository to judge |
+| `working-directory` | `.` | Top folder of the checkout to judge; a folder inside a checkout is refused (since 0.3.2) |
 | `token` | the job token | Used only to read who added the skip label |
 
 | Output | Meaning |
@@ -164,7 +166,7 @@ Outside a pull request (for example on `push` or `workflow_dispatch`), set `base
 
 ## What the action does
 
-1. Refuses to run on `pull_request_target`, and refuses a `mode` other than `report` or `block`.
+1. Refuses to run on `pull_request_target`, refuses a `mode` other than `report` or `block` (in any case, with spaces around it), and refuses a `working-directory` that is not the top folder of a checkout. Since 0.3.2 its git calls and the guard's run with `safe.bareRepository=explicit`, so a folder of the pull request that looks like a bare repository of its own (finding RC-N9) is never read as the repository.
 2. Copies `change_guard.py` and `cg_unittest_report.py` from the action's own files, at the version you pinned, into a fresh folder under `$RUNNER_TEMP`, and runs them from there. It never runs a copy of the guard that the pull request brings. Every Python call of the action runs with `-I` (isolated mode), so a `json.py` or a `sitecustomize.py` in the pull request's checkout, or a `PYTHONPATH` that points there, cannot run code inside the action. Before 0.3.1 it could (finding B1 of the 0.3.0 audit): a pull request that added a `json.py` ran it inside the action's steps and could record a skip under any name. The self-test `.github/workflows/action-selftest.yml` plants both files on every run and checks that neither runs. The skip values reach the guard only when the skip step found the label.
 3. If the skip label is on the pull request, reads who added it and the reason line.
 4. Runs the guard with the base and head commits, writes the step summary, prints the log line, appends it to `.change-guard/runs.log` and sets the outputs.
@@ -176,6 +178,7 @@ Outside a pull request (for example on `push` or `workflow_dispatch`), set `base
 - **It is not a security boundary.** The tests of the pull request run on the runner as the same user as the guard. Test code written on purpose to attack the guard can still get a change through. The README section "Limits, stated plainly" has the details.
 - **It does not prove that a change is right.** It shows that a test depends on the change. Someone still reads the assertions.
 - **It does not install your test dependencies.** Put your setup steps before it, as in your normal test job.
+- **It cannot protect itself from the steps before it.** A step that installs the pull request's dependencies (`npm ci`, `pip install -e .`) runs the pull request's code with the whole job environment, before the action starts. Such code can change the runner for the steps after it (for example through `GITHUB_PATH` or `GITHUB_ENV`) and so take over the action's steps, including the verdict. Where you can, install dependencies with `setup_command` in `change-guard.json`: that runs inside the guard, with the reduced environment of the tests. The README section "Limits, stated plainly" says the same under "Set-up steps run the pull request's code".
 - **It does not upload the log as an artifact.** It uses no other action inside it, so the upload is a step in your workflow (the quick start has one).
 - **It does not make the check required.** That is a branch rule you set, and on the free plan a private repository cannot set it.
 - **It writes nothing to GitHub.** No comments, no labels, no statuses beyond its own step. Its only network call is one read of the label history, and only when the skip label is present. The guard itself makes no network call.
@@ -183,4 +186,4 @@ Outside a pull request (for example on `push` or `workflow_dispatch`), set `base
 
 ## Without the action
 
-If your policy forbids third-party actions, copy `change_guard.py` and `cg_unittest_report.py` to `tools/change-guard/` and use [`ci/github-actions.yml`](../ci/github-actions.yml). That workflow takes the guard from the target branch with `git show` instead of from the action, and otherwise behaves the same. It is the route that ran on a GitHub hosted runner on 18 November 2026 ([ci-platforms.md](ci-platforms.md)). The action wraps the same steps, and `.github/workflows/action-selftest.yml` runs it on a fixture on every push and pull request to this repository.
+If your policy forbids third-party actions, copy `change_guard.py` and `cg_unittest_report.py` to `tools/change-guard/` and use [`ci/github-actions.yml`](../ci/github-actions.yml). That workflow takes the guard from the target branch with `git show` instead of from the action, and otherwise behaves the same. An earlier version of that workflow ran on a GitHub hosted runner on 18 November 2026; the current one has not run there yet ([ci-platforms.md](ci-platforms.md)). The action wraps the same steps, and `.github/workflows/action-selftest.yml` runs it on a fixture on every push and pull request to this repository.

@@ -211,5 +211,127 @@ class B1NoCodeFromTheCheckout(unittest.TestCase):
         self.assertIn("CHANGE_GUARD_SKIP_REASON: ${{ steps.skip.outputs.requested == 'true' && steps.skip.outputs.reason || '' }}", text)
 
 
+GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "Demo Engineer",
+           "GIT_AUTHOR_EMAIL": "demo@example.invalid", "GIT_COMMITTER_NAME": "Demo Engineer",
+           "GIT_COMMITTER_EMAIL": "demo@example.invalid"}
+
+
+def run_prepare(workdir, mode="report", cwd=None):
+    """Step 1 of action.yml in bash, with this repository as the action's files; returns (exit code, output, step outputs)."""
+    script = step_script(read("action.yml"), "Prepare the change guard")
+    with tempfile.TemporaryDirectory() as d:
+        output = os.path.join(d, "github_output")
+        open(output, "w").close()
+        env = dict(os.environ, CG_EVENT="pull_request", CG_MODE=mode, CG_BASE="main", CG_HEAD="change",
+                   CG_SKIP_LABEL="change-guard-skip", CG_ENFORCE_LABEL="change-guard-enforce", CG_WORKDIR=workdir,
+                   CG_ACTION_PATH=KIT, CG_ACTION_REPOSITORY="", CG_ACTION_REF="", RUNNER_TEMP=d, GITHUB_OUTPUT=output,
+                   PYTHONDONTWRITEBYTECODE="1", **GIT_ENV)
+        proc = subprocess.run(["bash", "-c", script], cwd=cwd or d, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        with open(output) as fh:
+            values = dict(l.split("=", 1) for l in fh.read().splitlines() if "=" in l)
+    return proc.returncode, proc.stdout.decode(), values
+
+
+def git_repo(folder):
+    subprocess.run(["git", "-C", folder, "init", "--quiet", "-b", "main"], env=dict(os.environ, **GIT_ENV), check=True)
+    os.makedirs(os.path.join(folder, "src"), exist_ok=True)
+    with open(os.path.join(folder, "src", "a.py"), "w") as fh:
+        fh.write("X = 1\n")
+    subprocess.run(["git", "-C", folder, "add", "-A"], env=dict(os.environ, **GIT_ENV), check=True)
+    subprocess.run(["git", "-C", folder, "commit", "--quiet", "-m", "base"], env=dict(os.environ, **GIT_ENV), check=True)
+
+
+class ActionMode032(unittest.TestCase):
+    """Version 0.3.2 (RT-N5): the action's mode input ignores case and spaces, as the guard does."""
+
+    def test_rt_n5_the_mode_input_ignores_case_and_spaces(self):
+        with tempfile.TemporaryDirectory() as d:
+            git_repo(d)
+            for given, want in (("Block", "block"), (" BLOCK ", "block"), ("Report", "report"), ("block", "block")):
+                with self.subTest(given=given):
+                    code, out, values = run_prepare(d, given)
+                    self.assertEqual(code, 0, out)
+                    self.assertEqual(values.get("mode"), want, out)
+            for given in ("blocking", "", "on"):
+                with self.subTest(given=given):
+                    code, out, values = run_prepare(d, given)
+                    self.assertEqual(code, 2, out)
+                    self.assertIn("The input mode must be report or block", out)
+
+    def test_rt_n5_the_guard_step_takes_the_mode_from_step_1(self):
+        text = read("action.yml")
+        guard_step = text[text.index("- name: Run the change guard"):]
+        self.assertIn("CG_MODE: ${{ steps.prepare.outputs.mode }}", guard_step)
+        self.assertNotIn("CG_MODE: ${{ inputs.mode }}", guard_step)
+
+
+class RCN9WorkingDirectory(unittest.TestCase):
+    """Version 0.3.2 (RC-N9): the action refuses a working-directory that is not the top of a checkout."""
+
+    def test_rc_n9_only_the_top_of_a_checkout_is_accepted(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "repo")
+            os.makedirs(repo)
+            git_repo(repo)
+            code, out, values = run_prepare(repo, "report")
+            self.assertEqual(code, 0, out)
+            self.assertIn("tools", values)
+            code, out, _ = run_prepare(os.path.join(repo, "src"), "report")
+            self.assertEqual(code, 2, out)
+            self.assertIn("is not the top folder of a git checkout", out)
+            # A folder that looks like a bare repository of its own (HEAD, objects/, refs/).
+            svc = os.path.join(repo, "svc")
+            for sub in ("objects/info", "refs/heads"):
+                os.makedirs(os.path.join(svc, *sub.split("/")))
+            with open(os.path.join(svc, "HEAD"), "w") as fh:
+                fh.write("ref: refs/heads/main\n")
+            with open(os.path.join(svc, "config"), "w") as fh:
+                fh.write("[core]\n\tbare = true\n")
+            code, out, _ = run_prepare(svc, "report")
+            self.assertEqual(code, 2, out)
+            # Control: a linked worktree is the top of its own checkout.
+            linked = os.path.join(d, "linked")
+            subprocess.run(["git", "-C", repo, "worktree", "add", "--quiet", "--detach", linked, "main"],
+                           env=dict(os.environ, **GIT_ENV), check=True)
+            code, out, _ = run_prepare(linked, "report")
+            self.assertEqual(code, 0, out)
+
+    def test_rc_n9_git_in_the_action_never_reads_an_implicit_bare_repository(self):
+        script = step_script(read("action.yml"), "Prepare the change guard")
+        calls = re.findall(r"\bgit (?:-c \S+ )*-C ", script)
+        self.assertTrue(calls)
+        self.assertTrue(all("safe.bareRepository=explicit" in c for c in calls), calls)
+        self.assertIn("--show-toplevel", script)
+
+    def test_rc_n9_and_rt_n5_the_selftest_workflow_checks_both(self):
+        text = read(".github", "workflows", "action-selftest.yml")
+        self.assertIn("working-directory: ${{ runner.temp }}/cg-fixture/src", text)
+        self.assertIn('check "case 6" "$C6" "failure result="', text)
+        self.assertIn("mode: ' Block '", text)
+        self.assertIn('check "case 7" "$C7" "failure STOPPED no-test block true"', text)
+        self.assertIn('check "log file lines" "$lines" "6"', text)
+        for case in ("subfolder", "mode_case"):
+            block = text[text.index("id: %s" % case):]
+            self.assertIn("continue-on-error: true", block[:200])
+
+
+class M14JenkinsSkip(unittest.TestCase):
+    """Version 0.3.2 (M14): a Jenkins skip without a person is refused by the guard."""
+
+    def test_m14_no_fallback_name_for_the_skip(self):
+        text = read("ci", "Jenkinsfile.change-guard")
+        self.assertNotIn(":-unknown", text)
+        start = text.index('if [ -n "${CHANGE_GUARD_SKIP_REASON}" ]; then')
+        block = text[start:text.index("fi\n", start) + 2]
+        script = block + '\nprintf "by=[%s] reason=[%s]" "${CHANGE_GUARD_SKIP_BY-unset}" "${CHANGE_GUARD_SKIP_REASON-unset}"\n'
+        for started_by, want in (("", "by=[] reason=[Hotfix approved by the release manager]"),
+                                 ("dev-anna", "by=[dev-anna] reason=[Hotfix approved by the release manager]")):
+            with self.subTest(started_by=started_by):
+                env = dict(os.environ, CG_STARTED_BY=started_by, CHANGE_GUARD_SKIP_REASON="Hotfix approved by the release manager")
+                out = subprocess.run(["sh", "-c", script], env=env, stdout=subprocess.PIPE, check=True).stdout.decode()
+                self.assertEqual(out, want)
+        self.assertIn("skip-no-who", read("docs", "ci-platforms.md"))
+
+
 if __name__ == "__main__":
     unittest.main()

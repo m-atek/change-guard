@@ -37,10 +37,11 @@
 # pull_request_target. A token in the job can be read by the tests from the
 # guard's own process; the guard step gets none. The guard passes the tests a reduced environment
 # (docs/how-it-works.md) and stops a run whose tests write to the CI files.
-# First run on GitHub on 18 November 2026, on a hosted Ubuntu runner, with the
-# demonstration project: see docs/ci-platforms.md. The action versions below are the
-# ones that ran without a deprecation warning that day; pin them to a commit
-# if your policy asks for that.
+# An earlier version of this file (before the 0.3.1 changes to the order of the
+# steps) ran on GitHub on 18 November 2026, on a hosted Ubuntu runner, with the
+# demonstration project: see docs/ci-platforms.md. This version has not run on
+# GitHub yet. The action versions below are the ones that ran without a
+# deprecation warning that day; pin them to a commit if your policy asks for that.
 
 name: change-guard
 

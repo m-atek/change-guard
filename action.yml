@@ -18,7 +18,11 @@
 # It uses no other action inside it: every step is bash and Python 3 from the
 # runner, with the Python standard library only. Every Python call runs with -I
 # (isolated mode), so no module in the pull request's checkout (a json.py, a
-# sitecustomize.py) and no PYTHON* variable can run code inside the action. It makes no network call
+# sitecustomize.py) and no PYTHON* variable can run code inside the action. A
+# step BEFORE the action that installs the pull request's dependencies is
+# another matter: it runs the pull request's code with the whole job
+# environment and can take over the action's steps (for example through
+# GITHUB_PATH or GITHUB_ENV); prefer setup_command in change-guard.json. It makes no network call
 # except one read of the pull request's label history through the GitHub API,
 # and only when the skip label is on the pull request.
 
@@ -36,7 +40,7 @@ inputs:
     required: false
     default: 'change-guard.json'
   mode:
-    description: 'report (the check stays green and says what blocking mode would do) or block (STOPPED, TIMEOUT and ERROR fail the check). This input wins over the mode key in the configuration.'
+    description: 'report (the check stays green and says what blocking mode would do) or block (STOPPED, TIMEOUT and ERROR fail the check). Case and spaces around the value do not matter; any other value fails the check. This input wins over the mode key in the configuration.'
     required: false
     default: 'report'
   base:
@@ -56,7 +60,7 @@ inputs:
     required: false
     default: 'change-guard-enforce'
   working-directory:
-    description: 'Folder of the git repository to judge, relative to the workspace.'
+    description: 'Top folder of the checkout to judge, relative to the workspace. A folder inside a checkout is refused.'
     required: false
     default: '.'
   token:
@@ -105,9 +109,11 @@ runs:
           pull_request_target)
             fail "This action does not run on pull_request_target: the guard runs the pull request's own tests, and that trigger gives them the repository's secrets and a token that can write. Use the pull_request trigger." ;;
         esac
-        case "$CG_MODE" in
+        # Case and spaces around the value do not matter, as for the guard itself (0.3.2).
+        mode=$(printf '%s' "$CG_MODE" | tr '[:upper:]' '[:lower:]' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        case "$mode" in
           report|block) ;;
-          *) fail "The input mode must be report or block, not '$CG_MODE'." ;;
+          *) fail "The input mode must be report or block (case and spaces do not matter), not '$CG_MODE'." ;;
         esac
         for label in "$CG_SKIP_LABEL" "$CG_ENFORCE_LABEL"; do
           if [ -n "$label" ] && ! printf '%s' "$label" | grep -Eq '^[A-Za-z0-9._-]{1,50}$'; then
@@ -117,10 +123,18 @@ runs:
         if [ -z "$CG_BASE" ] || [ -z "$CG_HEAD" ]; then
           fail "No base or head commit. Outside a pull_request event, set the inputs base and head."
         fi
-        if ! git -C "$CG_WORKDIR" rev-parse --git-dir > /dev/null 2>&1; then
+        # safe.bareRepository=explicit: a folder of the pull request that looks like a
+        # bare repository (its own HEAD, objects/ and refs/) is never read as one (0.3.2).
+        if ! git -c safe.bareRepository=explicit -C "$CG_WORKDIR" rev-parse --git-dir > /dev/null 2>&1; then
           fail "The working-directory '$CG_WORKDIR' is not a git repository. Check out the repository first (actions/checkout with fetch-depth: 0)."
         fi
-        if [ "$(git -C "$CG_WORKDIR" rev-parse --is-shallow-repository)" = "true" ]; then
+        # Only the top folder of a checkout: below it, a pull request could add files
+        # that git reads as a repository of its own, with a history the pull request wrote.
+        top=$(git -c safe.bareRepository=explicit -C "$CG_WORKDIR" rev-parse --show-toplevel 2>/dev/null) || top=""
+        if [ -z "$top" ] || [ "$(cd "$top" && pwd -P)" != "$(cd "$CG_WORKDIR" && pwd -P)" ]; then
+          fail "The working-directory '$CG_WORKDIR' is not the top folder of a git checkout${top:+ (that is $top)}. Set it to the folder actions/checkout wrote the repository to."
+        fi
+        if [ "$(git -c safe.bareRepository=explicit -C "$CG_WORKDIR" rev-parse --is-shallow-repository)" = "true" ]; then
           echo "::warning title=change-guard::The checkout is shallow, so the guard may not find the merge base. Use actions/checkout with fetch-depth: 0."
         fi
         # The guard comes from this action's own files, never from the pull request.
@@ -130,7 +144,10 @@ runs:
           cp "$CG_ACTION_PATH/$f" "$tools/$f"
         done
         echo "Guard taken from ${CG_ACTION_REPOSITORY:-this repository} at ${CG_ACTION_REF:-the local checkout}: $(python3 -I "$tools/change_guard.py" --version)"
-        echo "tools=$tools" >> "$GITHUB_OUTPUT"
+        {
+          echo "tools=$tools"
+          echo "mode=$mode"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Read the skip label and reason
       id: skip
@@ -169,7 +186,7 @@ runs:
       shell: bash
       env:
         CG_TOOLS: ${{ steps.prepare.outputs.tools }}
-        CG_MODE: ${{ inputs.mode }}
+        CG_MODE: ${{ steps.prepare.outputs.mode }}
         CG_ENFORCE_LABEL: ${{ inputs.enforce-label }}
         CG_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         CG_BASE: ${{ inputs.base }}

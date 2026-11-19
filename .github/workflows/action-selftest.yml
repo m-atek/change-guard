@@ -4,7 +4,8 @@
 # Tests the packaging: runs this repository's own action.yml (uses: ./) on the
 # small fixture in tests/fixtures/action-selftest/ on every push and pull
 # request, and checks that the three seeded cases give the expected results in
-# blocking mode and that report mode keeps the check green. It only reads the
+# blocking mode, that report mode keeps the check green, that a working-directory
+# inside the checkout is refused and that the mode input ignores case and spaces. It only reads the
 # repository and needs no secrets. The skip step is switched off here (it needs
 # a real pull request with a label); docs/github-action.md says how to try it.
 
@@ -87,6 +88,33 @@ jobs:
           skip-label: ''
           enforce-label: ''
 
+      # Version 0.3.2 (RC-N9): a working-directory inside the checkout is refused
+      # before the guard runs, so this step must fail and give no result.
+      - name: "Case 6: a working-directory that is not the top of the checkout"
+        id: subfolder
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/cg-fixture/src
+          base: ${{ steps.fixture.outputs.base }}
+          head: ${{ steps.fixture.outputs.real_test }}
+          mode: report
+          skip-label: ''
+          enforce-label: ''
+
+      # Version 0.3.2 (RT-N5): case and spaces in the mode input do not matter.
+      - name: "Case 7: a change with no test, mode ' Block ' (block)"
+        id: mode_case
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/cg-fixture
+          base: ${{ steps.fixture.outputs.base }}
+          head: ${{ steps.fixture.outputs.no_test }}
+          mode: ' Block '
+          skip-label: ''
+          enforce-label: ''
+
       # Finding B1 of the 0.3.0 audit: a pull request that brings a json.py or a
       # sitecustomize.py must not get them run inside the action. They go into the
       # workspace, the folder the action's steps run in, and PYTHONPATH points there.
@@ -123,6 +151,8 @@ jobs:
           C3: ${{ steps.real_test.outcome }} ${{ steps.real_test.outputs.result }} ${{ steps.real_test.outputs.cause }} ${{ steps.real_test.outputs.mode }} ${{ steps.real_test.outputs.blocks }}
           C4: ${{ steps.report_only.outcome }} ${{ steps.report_only.outputs.result }} ${{ steps.report_only.outputs.cause }} ${{ steps.report_only.outputs.mode }} ${{ steps.report_only.outputs.blocks }}
           C5: ${{ steps.hostile.outcome }} ${{ steps.hostile.outputs.result }} ${{ steps.hostile.outputs.cause }} ${{ steps.hostile.outputs.mode }} ${{ steps.hostile.outputs.blocks }}
+          C6: ${{ steps.subfolder.outcome }} result=${{ steps.subfolder.outputs.result }}
+          C7: ${{ steps.mode_case.outcome }} ${{ steps.mode_case.outputs.result }} ${{ steps.mode_case.outputs.cause }} ${{ steps.mode_case.outputs.mode }} ${{ steps.mode_case.outputs.blocks }}
           L1: ${{ steps.no_test.outputs.log-line }}
           L3: ${{ steps.real_test.outputs.log-line }}
         run: |
@@ -140,6 +170,8 @@ jobs:
           check "case 3" "$C3" "success PASSED ok block false"
           check "case 4" "$C4" "success STOPPED no-test report false"
           check "case 5" "$C5" "failure STOPPED no-test block true"
+          check "case 6" "$C6" "failure result="
+          check "case 7" "$C7" "failure STOPPED no-test block true"
           if ls "$RUNNER_TEMP"/HOSTILE_RAN_* >/dev/null 2>&1; then
             echo "::error title=action-selftest::a hostile file from the workspace ran inside the action: $(ls "$RUNNER_TEMP"/HOSTILE_RAN_*)"
             failed=1
@@ -151,5 +183,6 @@ jobs:
           case "$L3" in cg2*PASSED*ok*) echo "ok      log line of case 3 is in the cg2 format" ;;
             *) echo "::error title=action-selftest::log line of case 3 is missing or not cg2: '$L3'"; failed=1 ;; esac
           lines=$(wc -l < "$FIXTURE/.change-guard/runs.log" | tr -d ' ')
-          check "log file lines" "$lines" "5"
+          # Cases 1 to 5 and 7 write one line each; case 6 is refused before the guard runs.
+          check "log file lines" "$lines" "6"
           exit "$failed"

@@ -297,8 +297,10 @@ class I4WordLists(unittest.TestCase):
         r = Repo(self, base_files=base)
         code, res, out = r.change({"src/export.py": "def export(path):\n    open(path, 'w').write('x')\n    return path\n",
                                    "tests/test_export.py": test_module("import os, tempfile\nfrom src.export import export",
-                                                                       "p = os.path.join(tempfile.mkdtemp(), 'out.txt')\nexport(p)\n"
-                                                                       "self.assertEqual(open(p).read(), 'x')")})
+                                                                       # A folder that is removed again (version 0.3.2, M10).
+                                                                       "with tempfile.TemporaryDirectory() as d:\n"
+                                                                       "    p = os.path.join(d, 'out.txt')\n    export(p)\n"
+                                                                       "    with open(p) as fh:\n        self.assertEqual(fh.read(), 'x')")})
         self.assertEqual((res["result"], res["cause"]), ("PASSED", "ok"), out)
 
     @unittest.skipUnless(HAS_PYTEST, "pytest is not installed")

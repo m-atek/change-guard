@@ -21,7 +21,8 @@
 //
 // Skip step: rebuild the pull request with the parameters CHANGE_GUARD_SKIP_REASON
 // filled in. Who skipped is the user who started that build (Jenkins records it);
-// the reason is the parameter. Both go into the log line.
+// the reason is the parameter. Both go into the log line. A build that no
+// person started (a timer, an upstream job) cannot skip: the guard refuses it.
 //
 // The clone must hold the target branch and full history (no shallow clone:
 // in the checkout behaviours, turn off "shallow clone" or fetch it as below).
@@ -44,7 +45,9 @@ pipeline {
           git fetch --no-tags --unshallow origin 2>/dev/null || true
           git fetch --no-tags origin "+refs/heads/${CHANGE_TARGET}:refs/remotes/origin/${CHANGE_TARGET}"
           if [ -n "${CHANGE_GUARD_SKIP_REASON}" ]; then
-            export CHANGE_GUARD_SKIP_BY="${CG_STARTED_BY:-unknown}"
+            # No fallback name: a build without a person who started it gives an
+            # empty value, and the guard refuses the skip (STOPPED skip-no-who).
+            export CHANGE_GUARD_SKIP_BY="${CG_STARTED_BY}"
             export CHANGE_GUARD_SKIP_REASON
           else
             unset CHANGE_GUARD_SKIP_REASON
