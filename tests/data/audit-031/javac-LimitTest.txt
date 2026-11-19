@@ -1,0 +1,6 @@
+t3/shop/LimitTest.java:5: error: cannot find symbol
+        int v = Pricing.MAX_QUANTITY;
+                       ^
+  symbol:   variable MAX_QUANTITY
+  location: class Pricing
+1 error

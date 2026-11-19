@@ -315,7 +315,14 @@ class R9PhaseHidden(unittest.TestCase):
         cfg = cg.validate_config(dict(BASE_CFG))
         with tempfile.TemporaryDirectory() as d:
             state = {"tmp_parent": d}
-            self.assertEqual(os.path.basename(cg.report_location(cfg, d, state, "base")), "run-1.jsonl")
+            # Version 0.3.1 (finding D2 of the 0.3.0 audit): the name was run-1, run-2 ... in run
+            # order, so the head run could be recognised; now every run gets a random name of one shape.
+            names = [os.path.basename(cg.report_location(cfg, d, state, phase)) for phase in ("head", "base", "base")]
+            for name in names:
+                self.assertRegex(name, r"^report-[0-9a-f]{12}\.jsonl$")
+                self.assertNotIn("base", name)
+                self.assertNotIn("head", name)
+            self.assertEqual(len(set(names)), 3)
 
 
 class R10R13Rewrite(unittest.TestCase):

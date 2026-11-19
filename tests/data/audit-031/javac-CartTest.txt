@@ -1,0 +1,6 @@
+t2/shop/CartTest.java:5: error: cannot find symbol
+        long v = new Cart().withTax(1000);
+                           ^
+  symbol:   method withTax(int)
+  location: class Cart
+1 error

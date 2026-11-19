@@ -214,7 +214,13 @@ class ClassifyTest(unittest.TestCase):
                 rec("tests.test_x.T.test_c", "skipped", "skip")]
         classes = cg.classify_base(head, base, ctx(added_paths=["src/rates.json"]))
         self.assertEqual(classes["tests.test_x.T.test_a"][0], "errored-missing-file")
-        self.assertEqual(classes["tests.test_x.T.test_b"][0], "errored-environment")
+        # Version 0.3.1 (finding I4 of the 0.3.0 audit): inside a test the environment words are the
+        # behaviour under test, so they no longer explain the error; for a load error they still do.
+        self.assertEqual(classes["tests.test_x.T.test_b"][0], "errored-other")
+        load = [rec("load:tests/test_y.py", "error", "ConnectionRefusedError", "ConnectionRefusedError: Connection refused",
+                    group="tests/test_y.py", file_level=True)]
+        self.assertEqual(cg.classify_base([rec("tests.test_y.T.test_d", "passed", group="tests/test_y.py")], load, ctx())
+                         ["tests.test_y.T.test_d"][0], "errored-environment")
         self.assertEqual(classes["tests.test_x.T.test_c"][0], "skipped")
         self.assertEqual(classes["tests.test_y.T.test_d"][0], "not-collected")
 

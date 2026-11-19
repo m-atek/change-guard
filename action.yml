@@ -16,7 +16,9 @@
 #   - no secrets in the job: the guard runs the pull request's own tests.
 #
 # It uses no other action inside it: every step is bash and Python 3 from the
-# runner, with the Python standard library only. It makes no network call
+# runner, with the Python standard library only. Every Python call runs with -I
+# (isolated mode), so no module in the pull request's checkout (a json.py, a
+# sitecustomize.py) and no PYTHON* variable can run code inside the action. It makes no network call
 # except one read of the pull request's label history through the GitHub API,
 # and only when the skip label is on the pull request.
 
@@ -127,7 +129,7 @@ runs:
           [ -f "$CG_ACTION_PATH/$f" ] || fail "$f is missing from the action's files at $CG_ACTION_PATH."
           cp "$CG_ACTION_PATH/$f" "$tools/$f"
         done
-        echo "Guard taken from ${CG_ACTION_REPOSITORY:-this repository} at ${CG_ACTION_REF:-the local checkout}: $(python3 "$tools/change_guard.py" --version)"
+        echo "Guard taken from ${CG_ACTION_REPOSITORY:-this repository} at ${CG_ACTION_REF:-the local checkout}: $(python3 -I "$tools/change_guard.py" --version)"
         echo "tools=$tools" >> "$GITHUB_OUTPUT"
 
     - name: Read the skip label and reason
@@ -141,7 +143,7 @@ runs:
         CG_PR_BODY: ${{ github.event.pull_request.body }}
       run: |
         set -euo pipefail
-        has_label=$(python3 -c 'import json, os; labels = json.loads(os.environ.get("CG_LABELS") or "null") or []; print("true" if os.environ["CG_SKIP_LABEL"] and os.environ["CG_SKIP_LABEL"] in labels else "false")')
+        has_label=$(python3 -I -c 'import json, os; labels = json.loads(os.environ.get("CG_LABELS") or "null") or []; print("true" if os.environ["CG_SKIP_LABEL"] and os.environ["CG_SKIP_LABEL"] in labels else "false")')
         if [ "$has_label" != "true" ] || [ -z "$CG_PR_NUMBER" ]; then
           echo "No skip label on this pull request."
           echo "requested=false" >> "$GITHUB_OUTPUT"
@@ -175,12 +177,13 @@ runs:
         CG_CONFIG: ${{ inputs.config }}
         CG_WORKDIR: ${{ inputs.working-directory }}
         CG_PR_NUMBER: ${{ github.event.pull_request.number }}
-        CHANGE_GUARD_SKIP_BY: ${{ steps.skip.outputs.by }}
-        CHANGE_GUARD_SKIP_REASON: ${{ steps.skip.outputs.reason }}
+        # The skip values count only when the skip step found the label (finding B1 of the 0.3.0 audit).
+        CHANGE_GUARD_SKIP_BY: ${{ steps.skip.outputs.requested == 'true' && steps.skip.outputs.by || '' }}
+        CHANGE_GUARD_SKIP_REASON: ${{ steps.skip.outputs.requested == 'true' && steps.skip.outputs.reason || '' }}
       run: |
         set -uo pipefail
         mode="$CG_MODE"
-        enforced=$(python3 -c 'import json, os; labels = json.loads(os.environ.get("CG_LABELS") or "null") or []; print("true" if os.environ["CG_ENFORCE_LABEL"] and os.environ["CG_ENFORCE_LABEL"] in labels else "false")')
+        enforced=$(python3 -I -c 'import json, os; labels = json.loads(os.environ.get("CG_LABELS") or "null") or []; print("true" if os.environ["CG_ENFORCE_LABEL"] and os.environ["CG_ENFORCE_LABEL"] in labels else "false")')
         if [ "$enforced" = "true" ]; then
           mode=block
           echo "The label $CG_ENFORCE_LABEL puts this pull request in blocking mode."
@@ -189,7 +192,7 @@ runs:
         result_json="$CG_TOOLS/result.json"
         # GitHub runs bash with -e; keep the exit code so the outputs are written first.
         status=0
-        python3 "$CG_TOOLS/change_guard.py" \
+        python3 -I "$CG_TOOLS/change_guard.py" \
           --repo "$CG_WORKDIR" \
           --base "$CG_BASE" --head "$CG_HEAD" \
           --config "$CG_CONFIG" \
@@ -198,7 +201,7 @@ runs:
           --summary "$GITHUB_STEP_SUMMARY" \
           --result-json "$result_json" || status=$?
         if [ -f "$result_json" ]; then
-          python3 - "$result_json" "$status" <<'PY'
+          python3 -I - "$result_json" "$status" <<'PY'
         import json, os, sys
         with open(sys.argv[1], encoding="utf-8") as fh:
             data = json.load(fh)

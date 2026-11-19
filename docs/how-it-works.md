@@ -26,7 +26,7 @@ At the end of every run, whatever happened, the guard checks that the tests did 
 
 ### 1. Configuration (`load_config_from_commits`, `validate_config`, `config_unloadable`)
 
-The guard reads `change-guard.json` as committed on the base commit given with `--base`, never the copy in the change. If the base has no configuration, which is only the case for the pull request that installs the guard, it uses the head's copy and adds the note `config-from-head`. A `--config` path outside the repository is read from disk, because the CI file chose it. Unknown keys and wrong values are refused.
+The guard reads `change-guard.json` as committed on the base commit given with `--base`, never the copy in the change. If the base has no configuration, which is only the case for the pull request that installs the guard, it uses the head's copy and adds the note `config-from-head`. A `--config` path outside the repository is read from disk, because the CI file chose it. Unknown keys and wrong values are refused. Since 0.3.1 the mode ignores case and spaces, and an unknown mode (from `--mode`, `CHANGE_GUARD_MODE` or the `mode` key) fails closed: ERROR `config` with exit code 2. A protected pattern that matches no file on the base or the head commit also ends as ERROR `config`, after the skip step, so a typo cannot quietly protect nothing.
 
 If the configuration cannot be loaded, the guard does not stop there: a skip request with a person and a reason passes the change as SKIPPED with the note `config-broken`, and a change whose only changed file is the configuration passes as EXEMPT `config-repair` when the base's copy cannot be loaded and the head's can. Anything else ends as ERROR `config`.
 
@@ -50,7 +50,7 @@ The guard takes the merge base of the two commits as "the base": the code the ch
 Before any test runs, the guard prepares every temporary git worktree, each in a folder with a random name under one temporary folder:
 
 - the head;
-- the base, with the head's version of the changed test files, matching `test_support` files and (with `overlay_added_files`) every file the change adds outside the protected paths laid over it. A protected file the change renames keeps its old content under its new name, so a test that imports the new name meets the old code;
+- the base, with the head's version of the changed test files, matching `test_support` files and (with `overlay_added_files`, the default) every file the change adds or edits outside the protected paths laid over it (since 0.3.1 edited files too, so a helper the change extends is the head's version on the base). A protected file the change renames keeps its old content under its new name, so a test that imports the new name meets the old code;
 - when the probe will run, a second copy of the head.
 
 It commits its own changes in each with one neutral message, author and date (an empty commit on the head), so `git status` is clean in all of them and `git log -1` shows the same message. It then records the state of the repository's hooks, git configuration and `info` folder, and checks them before every later git command.
@@ -66,7 +66,7 @@ When the test command writes a machine-readable report (`report_format`), the gu
 1. Absent from the base report: it takes the class of a load error reported for its file or module, or `not-collected`.
 2. `passed` or `skipped` (expected failures count as skipped).
 3. A failure whose exception type is an assertion type: `failed-assertion`.
-4. Any other failure or error is checked against three lists: a missing-symbol pattern that captures a name the change adds gives `errored-new-symbol`; a message that a file is missing, naming a file the change adds, gives `errored-missing-file`; an environment pattern gives `errored-environment`. Otherwise a failure is `failed-assertion` and an error is `errored-other`.
+4. Any other failure or error is checked in this order: a missing-symbol pattern that captures a name the change adds gives `errored-new-symbol`; a message that a file is missing, naming a protected file the change adds, gives `errored-missing-file`; then, for a load error only, an environment pattern gives `errored-environment`; for an exception inside a test, a missing-symbol pattern that captures a name the change does not add (a dictionary key, an attribute; but not `'NoneType' object has no attribute`) gives `errored-unknown-name`. Otherwise a failure is `failed-assertion` and an error is `errored-other` (a load error: `errored-load`). Since 0.3.1 the environment words are never read in an exception raised inside a test, and a pytest assertion failure keeps its class, so its text goes through none of these lists.
 5. If the runner wrote no report at all on the base (for example a compile step failed first), the end of the output becomes one load error and goes through the same checks.
 
 ### 6. The link to the change (layer 2)
@@ -76,7 +76,7 @@ A base error counts as "new code is missing" only when the name in the error mes
 The classes then fall into three groups (`split_classes`):
 
 - **proof:** `failed-assertion`, plus `errored-other` while `errored_counts_as_proof` is true;
-- **new code:** `errored-new-symbol` and `errored-missing-file`;
+- **new code:** `errored-new-symbol`, `errored-missing-file` and `errored-unknown-name`;
 - **neither:** everything else that did not pass.
 
 Early verdicts (`first_decision`): every test passed or was skipped on the base gives STOPPED `test-passes-on-base`; only "neither" results give ERROR `base-error-unrelated`.
@@ -100,7 +100,7 @@ With `check_edited_tests` on, the version of each edited test file from before t
 ### 10. The verdict (`final_decision`)
 
 - Proof on the base: PASSED `ok`.
-- Otherwise new code only: PASSED `ok-new-code` when the probe noticed every added function; when no probe covered it, STOPPED `base-error-only` if `base_error_policy` is `stop`, else PASSED `ok-unproven`.
+- Otherwise new code only: PASSED `ok-new-code` when the probe noticed every added function, every missing name on the base is such a function (or its class, module or new parameter), and the change edits no existing code (a function body, a top-level value; for other languages a file with removed or replaced lines) that no test showed failing; when no probe covered it, or something it rests on is not covered (0.3.1, note `changed-code-unproven` for edited code), STOPPED `base-error-only` if `base_error_policy` is `stop`, else PASSED `ok-unproven`.
 
 Without a report, any non-zero exit on the base counts as the failure, and the note `suspect-base-output` flags output that looks like a build or load failure. The second base run and the probe still run, judged on exit codes.
 
@@ -110,7 +110,7 @@ The guard puts back anything the tests changed in the repository's hooks, git co
 
 ## What the tests see
 
-The tests and the setup command run with an allowlist environment (`command_environment`): the plain variables of the shell and the toolchains (`PATH`, `HOME`, the locale, the temporary folder, `CI`, and locators such as `JAVA_HOME`, `GOPATH`, `VIRTUAL_ENV`, `PYTHONPATH`), the names in `pass_env`, and `CHANGE_GUARD_REPORT` (where to write the report). They never see `GITHUB_ENV`, `GITHUB_OUTPUT`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY`, `GITHUB_TOKEN`, `GH_TOKEN`, the Actions runtime tokens, GitLab's job tokens, Azure's `SYSTEM_ACCESSTOKEN` or `CHANGE_GUARD_API_TOKEN`, even when `pass_env` names them. Only the setup command also gets `CHANGE_GUARD_PHASE` (`head`, `base` or `probe`) and `CHANGE_GUARD_REPO`, so a test cannot read which commit it runs on from the environment. Worktree folders and report files have neutral names.
+The tests and the setup command run with an allowlist environment (`command_environment`): the plain variables of the shell and the toolchains (`PATH`, `HOME`, the locale, the temporary folder, `CI`, and locators such as `JAVA_HOME`, `GOPATH`, `VIRTUAL_ENV`, `PYTHONPATH`), the names in `pass_env`, and `CHANGE_GUARD_REPORT` (where to write the report). They never see `GITHUB_ENV`, `GITHUB_OUTPUT`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY`, `GITHUB_TOKEN`, `GH_TOKEN`, the Actions runtime tokens, GitLab's job tokens, Azure's `SYSTEM_ACCESSTOKEN` or `CHANGE_GUARD_API_TOKEN`, even when `pass_env` names them. Only the setup command also gets `CHANGE_GUARD_PHASE` (`head`, `base` or `probe`) and `CHANGE_GUARD_REPO`, so the environment does not tell a test which commit it runs on. Worktree folders and report files have random names of one shape. A test can still tell the runs apart by looking at the code it runs against; see "It is not a security boundary" in the README. A `PYTHONPATH` entry that points into the checkout is moved to the same place in the working copy being run (0.3.1).
 
 ## Modes and exit codes
 
@@ -128,7 +128,7 @@ PASSED, EXEMPT, OUT_OF_SCOPE and SKIPPED let the change through. STOPPED, TIMEOU
 | `ok` (without a report) | The new or changed test files fail on the base commit and pass on the head commit, so they show the change in behaviour. |
 | `ok` (exception as proof) | The new or changed tests raise an exception on the base commit that no missing name explains and pass on the head commit, so they show the change in behaviour. |
 | `ok-new-code` | The new tests could not run on the base because the code they call is new in this change, and they fail when that new code is replaced by an empty body, so they depend on what the change adds. |
-| `ok-unproven` | The new tests fail on the base only because the code they call is new in this change, and no probe ran, so the guard cannot show that they check its behaviour; a reviewer should read the assertions. (On GitHub Actions this result is a warning annotation, not a notice. Outside Python it is the result for every change that adds a function, whether its test checks it or not; see [languages.md](languages.md).) |
+| `ok-unproven` | The new tests fail on the base only because the code they call is new in this change, and no probe ran, so the guard cannot show that they check its behaviour; a reviewer should read the assertions. When the probe ran but did not cover everything (0.3.1): The new tests fail on the base only because code this change adds is missing there, and the probe covered the new functions but not <what>, so the guard cannot show that the tests check all of this change; a reviewer should read the assertions and that code. (On GitHub Actions this result is a warning annotation, not a notice. Outside Python it is the result for every change that adds a function, whether its test checks it or not; see [languages.md](languages.md).) |
 
 ### EXEMPT
 
@@ -180,7 +180,7 @@ PASSED, EXEMPT, OUT_OF_SCOPE and SKIPPED let the change through. STOPPED, TIMEOU
 
 | Cause | Sentence |
 |---|---|
-| `config` | Names what is wrong with the configuration, for example: The configuration file has unknown keys (<keys>), so the guard refuses to guess what was meant. |
+| `config` | Names what is wrong with the configuration, for example: The configuration file has unknown keys (<keys>), so the guard refuses to guess what was meant. Also: CHANGE_GUARD_MODE must be report or block, so the guard cannot run with <value>; it fails the check until the value is fixed (exit code 2 also in report mode). The protected pattern <pattern> matches no file of the base or the head commit, so it protects nothing; the guard refuses to run with a pattern that cannot be meant. |
 | `git` | The git command 'git <command>' failed (<message>), so the guard cannot judge this change. Also: the base or head commit is not in this clone; the clone is shallow and does not hold the merge base; the two commits share no history. |
 | `command-not-found` | The test command could not start on the <phase> commit (exit <n>), so the guard cannot judge this change. |
 | `setup-failed` | The setup command failed on the <phase> commit (exit <n>), so the guard cannot run the tests there; if this is the base, the base may not build. |
@@ -190,14 +190,15 @@ PASSED, EXEMPT, OUT_OF_SCOPE and SKIPPED let the change through. STOPPED, TIMEOU
 | `probe-broken` | The guard could not replace the body of <functions> without breaking the file, so it could not run the probe. |
 | `tampered` | The test run changed <files>, which belong to the guard, the repository's git setup or the CI platform, so the guard cannot trust this run; what the tests changed in the repository's .git was put back, and text they added to the other files was removed where it could be. For a worktree: The worktree the guard prepared for the <phase> run changed after the guard prepared it (<files>), so the guard cannot trust this run. |
 | `internal` | The guard failed with <exception> (<message>), which is a bug in the guard or an input it cannot handle, so nothing was judged. |
+| `cancelled` | The guard was cancelled (signal <n>) before it reached a verdict, so nothing was judged. (0.3.1: SIGTERM and Ctrl-C end the run like this, with its clean-up and its log line.) |
 
 ## Notes
 
-Notes never change the result. They are printed as lines that start with `note:`, written into the step summary, and their codes go into the last log column: `assertions-removed`, `test-deleted`, `skip-marker-added`, `mocks-new-code`, `snapshot-changed`, `passes-on-base`, `flaky-on-head`, `edited-test-would-fail`, `probe-unavailable`, `probe-partial`, `config-from-head`, `guard-changed`, `config-broken`, `config-repair`, and, without a report, `suspect-base-output`.
+Notes never change the result. They are printed as lines that start with `note:`, written into the step summary, and their codes go into the last log column: `assertions-removed`, `test-deleted`, `skip-marker-added`, `mocks-new-code`, `snapshot-changed`, `passes-on-base`, `flaky-on-head`, `edited-test-would-fail`, `probe-unavailable`, `probe-partial`, `config-from-head`, `guard-changed`, `config-broken`, `config-repair`, `changed-code-unproven`, `log-lock-timeout`, and, without a report, `suspect-base-output`.
 
 ## The log
 
-One line per run, appended to `.change-guard/runs.log` (or `log_file`), tab-separated, UTF-8, no header. Tabs and line breaks inside a value become spaces, and an empty value is written as `-`. The first column names the format version, `cg2`; its first 14 columns are those of the older `cg1` format, in the same order.
+One line per run, appended to `.change-guard/runs.log` (or `log_file`), tab-separated, UTF-8, no header. Since 0.3.1 a run holds a lock next to the log (`runs.log.lock`) from before its tests run until its line is written, so two guards on one checkout take turns instead of reading each other's line as tampering (Unix only). Tabs and line breaks inside a value become spaces, and an empty value is written as `-`. The first column names the format version, `cg2`; its first 14 columns are those of the older `cg1` format, in the same order.
 
 | # | Column | Example |
 |---|---|---|

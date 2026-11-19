@@ -21,13 +21,18 @@
 # label; without it, it records the user who started the pipeline and says so.
 #
 # The merge request does not choose its own judge (version 0.2.1): the guard and
-# its reporter come from the base commit (git show) and run from a temporary
-# folder outside the checkout, and the guard reads change-guard.json from the
-# base commit. GitLab takes .gitlab-ci.yml from the merge request's own branch,
+# its reporter come from the tip of the target branch (git show) and run from a
+# temporary folder outside the checkout, and the guard reads change-guard.json
+# from there. Version 0.3.1 (finding I9 of the 0.3.0 audit): before, they came
+# from CI_MERGE_REQUEST_DIFF_BASE_SHA, the merge base, so a branch cut before
+# the guard was installed brought its own guard and rules. GitLab takes .gitlab-ci.yml from the merge request's own branch,
 # so protect it, tools/change-guard/ and change-guard.json with a CODEOWNERS
 # rule and code owner approval in the protected branch settings; that setting
 # is yours to make. Give this job no secrets other than the read-only
-# CHANGE_GUARD_API_TOKEN, which the guard never passes to the tests.
+# CHANGE_GUARD_API_TOKEN. The guard does not hand it to the tests, and the job
+# unsets it before the guard starts, but any token the job holds (GitLab's own
+# CI_JOB_TOKEN included) can be read by the tests from a parent process: give
+# it the smallest scope, or leave the API token out.
 
 change-guard:
   stage: test
@@ -45,29 +50,35 @@ change-guard:
       if printf ',%s,' "$CI_MERGE_REQUEST_LABELS" | grep -q ',change-guard-skip,'; then
         who=""
         if [ -n "$CHANGE_GUARD_API_TOKEN" ]; then
-          who=$(python3 -c 'import json,os,urllib.request
+          who=$(python3 -I -c 'import json,os,urllib.request
       url="%s/projects/%s/merge_requests/%s/resource_label_events?per_page=100" % (os.environ["CI_API_V4_URL"], os.environ["CI_PROJECT_ID"], os.environ["CI_MERGE_REQUEST_IID"])
       req=urllib.request.Request(url, headers={"PRIVATE-TOKEN": os.environ["CHANGE_GUARD_API_TOKEN"]})
       ev=[e for e in json.load(urllib.request.urlopen(req)) if e.get("action")=="add" and (e.get("label") or {}).get("name")=="change-guard-skip"]
       print(ev[-1]["user"]["username"] if ev else "")' || true)
         fi
         if [ -z "$who" ]; then who="${GITLAB_USER_LOGIN} (pipeline user)"; fi
+        unset CHANGE_GUARD_API_TOKEN
         export CHANGE_GUARD_SKIP_BY="$who"
         export CHANGE_GUARD_SKIP_REASON="$(printf '%s\n' "$CI_MERGE_REQUEST_DESCRIPTION" | tr -d '\r' | sed -n 's/^[[:space:]]*Change-Guard-Skip-Reason:[[:space:]]*//p' | head -n 1)"
       fi
     - |
+      unset CHANGE_GUARD_API_TOKEN
+      # The tip of the target branch, as in the Jenkins and Azure examples; the
+      # guard itself compares against the merge base of this and the head.
+      git fetch --quiet origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      CG_BASE="$(git rev-parse FETCH_HEAD)"
       CG_DIR="$(mktemp -d)"
       for f in change_guard.py cg_unittest_report.py; do
-        if git cat-file -e "$CI_MERGE_REQUEST_DIFF_BASE_SHA:tools/change-guard/$f" 2>/dev/null; then
-          git show "$CI_MERGE_REQUEST_DIFF_BASE_SHA:tools/change-guard/$f" > "$CG_DIR/$f"
+        if git cat-file -e "$CG_BASE:tools/change-guard/$f" 2>/dev/null; then
+          git show "$CG_BASE:tools/change-guard/$f" > "$CG_DIR/$f"
         else
-          echo "tools/change-guard/$f is not on the base commit yet, so this run uses the copy in the merge request (only right for the merge request that installs the guard)."
+          echo "tools/change-guard/$f is not on the target branch yet, so this run uses the copy in the merge request (only right for the merge request that installs the guard)."
           cp "tools/change-guard/$f" "$CG_DIR/$f"
         fi
       done
     - >
-      python3 "$CG_DIR/change_guard.py"
-      --base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+      python3 -I "$CG_DIR/change_guard.py"
+      --base "$CG_BASE"
       --head "$CI_COMMIT_SHA"
       --config change-guard.json
       --ref "mr-$CI_MERGE_REQUEST_IID"

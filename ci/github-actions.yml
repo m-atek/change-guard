@@ -34,7 +34,8 @@
 #
 # Secrets: the guard runs the pull request's own tests. Give this job no
 # secrets, keep the read-only token below, and never change the trigger to
-# pull_request_target. The guard passes the tests a reduced environment
+# pull_request_target. A token in the job can be read by the tests from the
+# guard's own process; the guard step gets none. The guard passes the tests a reduced environment
 # (docs/how-it-works.md) and stops a run whose tests write to the CI files.
 # First run on GitHub on 18 November 2026, on a hosted Ubuntu runner, with the
 # demonstration project: see docs/ci-platforms.md. The action versions below are the
@@ -62,40 +63,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # persist-credentials: false keeps the job token off the runner's disk,
+      # where the pull request's tests could read it (version 0.3.1, I8).
       - name: Check out with full history
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      # Put the steps your tests need here, exactly as in your normal test job
-      # (for example actions/setup-node and npm ci, or actions/setup-java).
-
-      - name: Read the skip label and reason
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'change-guard-skip') }}
-        run: |
-          if [ "$HAS_SKIP_LABEL" != "true" ]; then
-            echo "No skip label on this pull request."
-            exit 0
-          fi
-          who=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/events" --paginate \
-                  --jq '.[] | select(.event == "labeled" and .label.name == "change-guard-skip") | .actor.login' | tail -n 1)
-          reason=$(printf '%s\n' "$PR_BODY" | tr -d '\r' \
-                  | sed -n 's/^[[:space:]]*Change-Guard-Skip-Reason:[[:space:]]*//p' | head -n 1)
-          # A random delimiter, as in action.yml: a reason line cannot end the value early.
-          delim="cg_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
-          {
-            echo "CHANGE_GUARD_SKIP_BY=${who}"
-            echo "CHANGE_GUARD_SKIP_REASON<<${delim}"
-            echo "$reason"
-            echo "${delim}"
-          } >> "$GITHUB_ENV"
-          echo "Skip label set by ${who:-unknown}; reason: ${reason:-none given}"
-
+      # The guard is taken from the base branch before any step runs code from
+      # the pull request, and its hash is kept in a step output, which later
+      # steps cannot change; the guard step checks it again (version 0.3.1, I8).
       - name: Take the guard from the base branch
+        id: tools
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
@@ -108,15 +88,61 @@ jobs:
               cp "tools/change-guard/$f" "$RUNNER_TEMP/change-guard/$f"
             fi
           done
+          echo "sha=$(cat "$RUNNER_TEMP/change-guard/change_guard.py" "$RUNNER_TEMP/change-guard/cg_unittest_report.py" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      # The skip values travel as step outputs into the guard step's own env,
+      # never through GITHUB_ENV, where a later step could write them (I8).
+      - name: Read the skip label and reason
+        id: skip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'change-guard-skip') }}
+        run: |
+          if [ "$HAS_SKIP_LABEL" != "true" ]; then
+            echo "No skip label on this pull request."
+            echo "requested=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          who=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/events" --paginate \
+                  --jq '.[] | select(.event == "labeled" and .label.name == "change-guard-skip") | .actor.login' | tail -n 1)
+          reason=$(printf '%s\n' "$PR_BODY" | tr -d '\r' \
+                  | sed -n 's/^[[:space:]]*Change-Guard-Skip-Reason:[[:space:]]*//p' | head -n 1)
+          # A random delimiter, as in action.yml: a reason line cannot end the value early.
+          delim="cg_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+          {
+            echo "requested=true"
+            echo "by=${who}"
+            echo "reason<<${delim}"
+            echo "$reason"
+            echo "${delim}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Skip label set by ${who:-unknown}; reason: ${reason:-none given}"
+
+      # Put the steps your tests need here (for example actions/setup-node and
+      # npm ci). They come after the steps above on purpose: a set-up step such
+      # as npm ci or pip install -e . runs code from the pull request with the
+      # whole job environment, before the guard runs. Where you can, use
+      # setup_command in change-guard.json instead: it runs with the guard's
+      # reduced environment, in each of the guard's working copies.
 
       - name: Run the change guard
         env:
           CHANGE_GUARD_MODE: ${{ contains(github.event.pull_request.labels.*.name, 'change-guard-enforce') && 'block' || vars.CHANGE_GUARD_MODE || 'report' }}
+          CHANGE_GUARD_SKIP_BY: ${{ steps.skip.outputs.requested == 'true' && steps.skip.outputs.by || '' }}
+          CHANGE_GUARD_SKIP_REASON: ${{ steps.skip.outputs.requested == 'true' && steps.skip.outputs.reason || '' }}
+          GUARD_SHA: ${{ steps.tools.outputs.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          python3 "$RUNNER_TEMP/change-guard/change_guard.py" \
+          now=$(cat "$RUNNER_TEMP/change-guard/change_guard.py" "$RUNNER_TEMP/change-guard/cg_unittest_report.py" | sha256sum | cut -d' ' -f1)
+          if [ "$now" != "$GUARD_SHA" ]; then
+            echo "::error title=change-guard::The guard's files changed after they were taken from the base branch; a set-up step ran code that wrote to them."
+            exit 2
+          fi
+          python3 -I "$RUNNER_TEMP/change-guard/change_guard.py" \
             --base "$BASE_SHA" --head "$HEAD_SHA" \
             --config change-guard.json \
             --ref "pr-$PR_NUMBER" \

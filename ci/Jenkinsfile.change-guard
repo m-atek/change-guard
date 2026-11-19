@@ -58,7 +58,7 @@ pipeline {
               cp "tools/change-guard/$f" "$CG_DIR/$f"
             fi
           done
-          CHANGE_GUARD_MODE="${CG_MODE}" python3 "$CG_DIR/change_guard.py" \
+          CHANGE_GUARD_MODE="${CG_MODE}" python3 -I "$CG_DIR/change_guard.py" \
             --base "origin/${CHANGE_TARGET}" --head HEAD \
             --config change-guard.json --ref "PR-${CHANGE_ID}"
         '''

@@ -9,6 +9,7 @@ and passes after the K04 changes.
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import textwrap
@@ -52,9 +53,11 @@ class K04ConfigThroughASymlink(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "symbolic links need extra rights on Windows")
     def test_k04_absolute_config_path_through_a_symlink_is_read_from_the_base(self):
         r = Repo(self)
-        link = os.path.join(tempfile.mkdtemp(prefix="cg-k04-"), "linked-repo")
+        holder = tempfile.mkdtemp(prefix="cg-k04-")
+        link = os.path.join(holder, "linked-repo")
         os.symlink(r.repo, link)
-        self.addCleanup(os.remove, link)
+        # Version 0.3.1 (M10 of the 0.3.0 audit): remove the folder too, not only the link.
+        self.addCleanup(shutil.rmtree, holder, True)
         loose = dict(BASE_CFG, exempt=["src/**"])
         r.git("checkout", "--quiet", "-B", "change", "main")
         r.commit({"src/pricing.py": "def line_total(price, qty):\n    return 0\n", "change-guard.json": json.dumps(loose)})

@@ -1,0 +1,6 @@
+t1/shop/DiscountTest.java:5: error: cannot find symbol
+        long v = new Discount(10).apply(1000);
+                     ^
+  symbol:   class Discount
+  location: class DiscountTest
+1 error

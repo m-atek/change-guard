@@ -1,5 +1,5 @@
 {
-  "_comment": "Example configuration for the change guard, version 0.3.0. Copy to change-guard.json at the repository root, commit it to the target branch (the guard reads it from the base commit, never from the change it judges) and fill in the paths you want to protect. Keys that start with an underscore are comments. Every version 0.2.0 and 0.2.1 key is optional; the values below are the defaults except report_format and test_command.",
+  "_comment": "Example configuration for the change guard, version 0.3.1. Copy to change-guard.json at the repository root, commit it to the target branch (the guard reads it from the base commit, never from the change it judges) and fill in the paths you want to protect. Keys that start with an underscore are comments. Every version 0.2.0 and 0.2.1 key is optional; the values below are the defaults except report_format and test_command.",
   "protected": ["src/**"],
   "exempt": ["docs/**", "*.md", "requirements*.txt", "package-lock.json"],
   "tests": ["tests/**/test_*.py"],

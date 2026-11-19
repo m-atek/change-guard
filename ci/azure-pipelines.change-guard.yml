@@ -55,7 +55,7 @@ jobs:
               cp "tools/change-guard/$f" "$CG_DIR/$f"
             fi
           done
-          python3 "$CG_DIR/change_guard.py" \
+          python3 -I "$CG_DIR/change_guard.py" \
             --base "origin/${target}" \
             --head "${SYSTEM_PULLREQUEST_SOURCECOMMITID}" \
             --config change-guard.json \

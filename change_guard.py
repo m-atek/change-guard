@@ -6,7 +6,7 @@
 Rule: a change to protected paths must bring a new or changed test file, and
 those test files must fail on the base commit's code and pass on the head.
 
-How it judges a change (version 0.3.0):
+How it judges a change (version 0.3.1):
   1. It reads its configuration from the base commit (the target branch's
      rules), never from the change it judges. If that configuration cannot be
      loaded, a recorded skip or a change that only repairs it can still pass.
@@ -70,7 +70,7 @@ import tokenize
 import traceback
 import xml.etree.ElementTree as ElementTree
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 LOG_VERSION = "cg2"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -147,7 +147,7 @@ DEFAULTS = {
     "pass_env": [],
     "guard_files": ["**/change_guard.py", "**/cg_unittest_report.py", ".github/workflows/change-guard.yml",
                     ".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS", ".gitlab-ci.yml", "Jenkinsfile",
-                    "azure-pipelines.yml"],
+                    "azure-pipelines.yml", ".gitattributes", "**/.gitattributes"],
 }
 
 # The environment of the test and setup commands (version 0.2.1). The tests come
@@ -172,6 +172,8 @@ NEVER_PASSED_ENV = (
     "ACTIONS_RUNTIME_TOKEN", "ACTIONS_RUNTIME_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL",
     "ACTIONS_CACHE_URL", "ACTIONS_RESULTS_URL", "CI_JOB_TOKEN", "CI_JOB_JWT", "CI_JOB_JWT_V1", "CI_JOB_JWT_V2",
     "CI_REGISTRY_PASSWORD", "CI_DEPLOY_PASSWORD", "SYSTEM_ACCESSTOKEN", "CHANGE_GUARD_API_TOKEN",
+    # Version 0.3.1 (M13): these GitLab variables hold the job token too.
+    "CI_REPOSITORY_URL", "CI_DEPENDENCY_PROXY_PASSWORD", "CI_REGISTRY_USER_PASSWORD",
 )
 # Files the tests must not change while the guard runs, taken from the guard's own environment.
 CI_CONTROL_FILES = ("GITHUB_ENV", "GITHUB_OUTPUT", "GITHUB_PATH", "GITHUB_STATE", "GITHUB_STEP_SUMMARY")
@@ -199,6 +201,8 @@ MISSING_SYMBOL_PATTERNS = [
     r"does not have the attribute '(\w+)'",
     r"name '(\w+)' is not defined",
     r"No module named '([\w.]+)'",
+    # A dictionary key or a vars()/globals() lookup (version 0.3.1, findings I2 and D6).
+    r"KeyError: '(\w+)'",
     r"got an unexpected keyword argument '(\w+)'",
     r"(\w+)\(\) takes (?:from )?\d+ (?:to \d+ )?positional arguments? but \d+ (?:was|were) given",
     r"(\w+)\(\) missing \d+ required (?:positional|keyword-only) arguments?",
@@ -243,7 +247,28 @@ DEFINITION_PATTERNS = [re.compile(p) for p in (
     r"^\s*(?:(?:public|private|protected|internal|static|final|override|virtual|abstract|async|synchronized)\s+)+[\w<>\[\],.?]+\s+(\w+)\s*\(",
     r"^\s*(?:(?:public|private|protected)\s+)?(?:static\s+)?function\s+(\w+)",
     r"^\s*(?:(?:private|internal|public|override)\s+)*fun\s+(?:<[^>]*>\s*)?(\w+)",
+    # Version 0.3.1 (findings I2 and I5 of the 0.3.0 audit): more declaration forms.
+    # Classes and other types in Java, Kotlin, C#, Swift, TypeScript and PHP.
+    r"^\s*(?:(?:public|private|protected|internal|abstract|final|sealed|static|open|data|export|default|partial|readonly|fileprivate)\s+)*(?:class|interface|enum|record|struct|object|protocol|trait)\s+(\w+)",
+    # A Java or C# method without an access word: "long withTax(long cents) {".
+    r"^\s*(?:@\w+\s+)*[\w<>\[\],.?]+\s+(\w+)\s*\([^;]*\)\s*(?:throws\s+[\w.,\s]+)?\{?\s*$",
+    # Constants and fields: Java and C# ("public static final int MAX = 5"), PHP ("const MAX = 5").
+    r"^\s*(?:(?:public|private|protected|internal|static|final|const|readonly|volatile|transient)\s+)+[\w<>\[\],.?]+\s+(\w+)\s*=",
+    r"^\s*(?:(?:public|private|protected|final)\s+)*const\s+(\w+)\s*=",
+    # Kotlin and Swift properties.
+    r"^\s*(?:(?:private|internal|public|protected|const|static|lazy|override|open|fileprivate|lateinit)\s+)*(?:val|var|let)\s+(\w+)",
+    # Swift functions with modifiers.
+    r"^\s*(?:(?:public|private|internal|fileprivate|open|static|class|final|override|mutating|@\w+)\s+)+func\s+(\w+)",
+    # JavaScript and TypeScript class methods, and CommonJS exports.
+    r"^\s*(?:(?:static|async|get|set|public|private|protected|readonly)\s+)*(\w+)\s*\([^)]*\)\s*(?::\s*[\w<>\[\],.| ]+)?\{",
+    r"^\s*(?:module\.)?exports\.(\w+)\s*=",
 )]
+# Words that the patterns above can capture but that never name a definition.
+DEFINITION_KEYWORDS = frozenset((
+    "if", "for", "while", "switch", "catch", "return", "new", "else", "function", "do", "try", "with",
+    "synchronized", "super", "this", "throw", "typeof", "await", "yield", "case", "using", "lock",
+    "foreach", "fixed", "sizeof", "nameof", "when", "match", "elif", "guard", "defer", "repeat", "assert",
+))
 
 ASSERT_LINE_RX = re.compile(r"(?:\bassert|\bexpect\s*\(|\bshould\b|XCTAssert|\bAssert\.|\$this->assert|\bt\.Error|\bt\.Fatal|\brequire\.)")
 SKIP_MARKER_RX = re.compile(r"(@skip|skipIf|skipUnless|unittest\.skip|pytest\.mark\.skip|xfail|expectedFailure|\.skip\(|\bxit\(|\bxdescribe\(|\bt\.Skip|@Disabled|\[Ignore\]|markTestSkipped|XCTSkip|\.todo\()")
@@ -262,6 +287,18 @@ class GuardStop(Exception):
         self.hint = hint
 
 
+class GuardCancelled(Exception):
+    """A CI cancel (SIGTERM) or Ctrl-C during the run (version 0.3.1, M3 and D12 of the 0.3.0 audit)."""
+
+    def __init__(self, signum):
+        super().__init__(signum)
+        self.signum = signum
+
+
+def _on_signal(signum, frame):
+    raise GuardCancelled(signum)
+
+
 class BudgetExceeded(Exception):
     def __init__(self, phase):
         super().__init__(phase)
@@ -278,8 +315,17 @@ def glob_to_regex(pattern):
     "**" matches any number of folders, "*" matches within one folder name,
     "?" matches one character. A pattern without a slash matches the file name
     in any folder, the way .gitignore does. Paths use forward slashes.
+
+    Since version 0.3.1 a pattern that names a folder also matches everything
+    inside it, as in .gitignore: "src", "src/" and "./src/**" all protect the
+    files under src/ (finding I7 of the 0.3.0 audit).
     """
-    pat = pattern.strip().lstrip("/")
+    pat = pattern.strip()
+    while pat.startswith("./"):
+        pat = pat[2:]
+    pat = pat.lstrip("/")
+    if pat.endswith("/"):
+        pat = pat.rstrip("/") + "/**"
     anywhere = "/" not in pat
     out = []
     i = 0
@@ -303,7 +349,7 @@ def glob_to_regex(pattern):
     body = "".join(out)
     if anywhere:
         body = "(?:.*/)?" + body
-    return re.compile("^" + body + "$")
+    return re.compile("^" + body + "(?:/.*)?$")
 
 
 def matches_any(path, compiled):
@@ -360,12 +406,18 @@ def load_config_from_commits(repo, base, head, rel_path, say, state):
     return parse_config(data, "%s on the head commit" % rel_path)
 
 
+def normal_mode(value):
+    """A mode as given by a person: report, Report and ' block ' are the same (version 0.3.1)."""
+    return value.strip().lower() if isinstance(value, str) else value
+
+
 def validate_config(raw):
     unknown = [k for k in raw if k not in DEFAULTS and not k.startswith("_")]
     if unknown:
         raise _config_error("The configuration file has unknown keys (%s), so the guard refuses to guess what was meant." % ", ".join(sorted(unknown)))
     cfg = dict(DEFAULTS)
     cfg.update({k: v for k, v in raw.items() if not k.startswith("_")})
+    cfg["mode"] = normal_mode(cfg["mode"])
     for key in ("protected", "exempt", "tests", "test_support", "suspect_base_failure_patterns",
                 "probe_ignore", "missing_symbol_patterns", "environment_error_patterns",
                 "auto_exempt", "generated_markers", "snapshot_patterns", "pass_env", "guard_files"):
@@ -389,6 +441,11 @@ def validate_config(raw):
     }
     for key, allowed in choices.items():
         if cfg[key] not in allowed:
+            if key == "mode":
+                # A mistyped mode fails closed (version 0.3.1, finding I1).
+                stop = _config_error("The configuration key mode must be report or block, so the guard cannot run with %r; it fails the check until the value is fixed." % cfg[key])
+                stop.fail_closed = True
+                raise stop
             raise _config_error("The configuration key %s must be one of %s, so the guard cannot run with %r." % (key, ", ".join(allowed), cfg[key]))
     bad = [x for x in cfg["auto_exempt"] if x not in ("whitespace", "rename", "generated")]
     if bad:
@@ -415,13 +472,15 @@ def validate_config(raw):
         raise _config_error("The probe is set to command but probe_command is not set, so the guard cannot run the probe.")
     try:
         cfg["time_budget_seconds"] = float(cfg["time_budget_seconds"])
+        if cfg["time_budget_seconds"] <= 0 or float(cfg["probe_time_budget_seconds"]) <= 0:
+            raise ValueError("budget")
         cfg["probe_time_budget_seconds"] = float(cfg["probe_time_budget_seconds"])
         cfg["skip_reason_min_length"] = int(cfg["skip_reason_min_length"])
         cfg["output_tail_lines"] = int(cfg["output_tail_lines"])
         cfg["base_repeats"] = int(cfg["base_repeats"])
         cfg["head_retries"] = int(cfg["head_retries"])
     except (TypeError, ValueError):
-        raise _config_error("The numeric settings in the configuration are not numbers, so the guard cannot run.")
+        raise _config_error("The numeric settings in the configuration are not numbers, or a time budget is not above zero, so the guard cannot run.")
     if cfg["base_repeats"] not in (1, 2) or cfg["head_retries"] not in (0, 1):
         raise _config_error("The configuration keys base_repeats (1 or 2) and head_retries (0 or 1) are out of range, so the guard cannot run.")
     try:
@@ -533,6 +592,10 @@ class RepoWatch:
         return snap
 
     def _add(self, full, rel, snap):
+        if rel == "info/refs":
+            # Written by git's own housekeeping (update-server-info during gc), never read
+            # by a local checkout (version 0.3.1, D5 of the 0.3.0 audit).
+            return
         try:
             st = os.lstat(full)
         except OSError:
@@ -783,7 +846,9 @@ def diff_by_file(repo, base, head, paths):
         return files
     # Rename detection (-M) gives a renamed file only its real edits; core.quotepath=off
     # keeps non-ASCII paths readable. Pass both paths of a rename.
-    out = git(repo, "-c", "core.quotepath=off", "diff", "-U0", "--no-color", "-M", base, head, "--", *paths).stdout.decode("utf-8", "replace")
+    # --text --no-textconv --no-ext-diff: a "-diff" line in .gitattributes cannot hide the lines (version 0.3.1, M5).
+    out = git(repo, "-c", "core.quotepath=off", "diff", "-U0", "--no-color", "--text", "--no-textconv", "--no-ext-diff", "-M",
+              base, head, "--", *paths).stdout.decode("utf-8", "replace")
     cur, minus, in_hunk = None, None, False
     for line in out.splitlines():
         if line.startswith("diff --git "):
@@ -965,11 +1030,34 @@ def report_location(cfg, workdir, state, phase):
         return ""
     if cfg["report_path"]:
         return os.path.join(workdir, *cfg["report_path"].split("/"))
-    state["report_counter"] = state.get("report_counter", 0) + 1
     folder = os.path.join(state["tmp_parent"], "reports")
     os.makedirs(folder, exist_ok=True)
-    # Neutral names: the file name must not tell a test which commit it runs on.
-    return os.path.join(folder, "run-%d.%s" % (state["report_counter"], REPORT_FORMATS[cfg["report_format"]]))
+    # A random name of the same shape for every run (version 0.3.1, finding D2 of
+    # the 0.3.0 audit): before, the head run always wrote run-1, so a test could
+    # read the phase from its own report path. This removes that one cheap signal;
+    # a test can still tell the runs apart by looking at the code (README limits).
+    return os.path.join(folder, "report-%s.%s" % (os.urandom(6).hex(), REPORT_FORMATS[cfg["report_format"]]))
+
+
+def worktree_pythonpath(value, repo, workdir):
+    """PYTHONPATH with every entry inside the main checkout moved to the same place in the worktree.
+
+    Version 0.3.1 (finding I6 of the 0.3.0 audit): with a "src layout" the agent
+    often sets PYTHONPATH to <checkout>/src, so the base run imported the head's
+    code from the checkout and every honest change stopped as test-passes-on-base.
+    An installed copy (pip install -e .) cannot be moved this way; README limits.
+    """
+    roots = sorted({os.path.abspath(repo), os.path.realpath(repo)}, key=len, reverse=True)
+    out = []
+    for entry in value.split(os.pathsep):
+        moved = entry
+        for root in roots:
+            full = os.path.abspath(entry) if entry else ""
+            if full == root or full.startswith(root + os.sep):
+                moved = os.path.join(workdir, os.path.relpath(full, root)) if full != root else workdir
+                break
+        out.append(moved)
+    return os.pathsep.join(out)
 
 
 def run_tests(cfg, workdir, files, phase, budget, repo, state=None, do_setup=True):
@@ -989,6 +1077,8 @@ def run_tests(cfg, workdir, files, phase, budget, repo, state=None, do_setup=Tru
     # given to the setup command, never to the tests, so a test cannot read
     # which commit it runs on (docs/how-it-works.md).
     env = command_environment(cfg, {"CHANGE_GUARD_REPORT": report})
+    if env.get("PYTHONPATH"):
+        env["PYTHONPATH"] = worktree_pythonpath(env["PYTHONPATH"], repo, workdir)
     setup_env = dict(env, CHANGE_GUARD_PHASE=phase, CHANGE_GUARD_REPO=repo)
     command = expand_command(cfg["test_command"], files, report)
     log = []
@@ -1048,7 +1138,8 @@ def tail(text, n, temp_root=None):
         for root in sorted({temp_root, os.path.realpath(temp_root)}, key=len, reverse=True):
             text = text.replace(root, "<temp>")
     lines = text.rstrip().splitlines()
-    return lines[-n:] if n > 0 else []
+    # One very long line (a test that writes megabytes without a newline) is cut (version 0.3.1, D10).
+    return [l if len(l) <= 2000 else l[:2000] + " [cut]" for l in lines[-n:]] if n > 0 else []
 
 
 # --------------------------------------------------------------------------
@@ -1093,6 +1184,10 @@ def parse_junit_xml(texts):
                     m = re.match(r"([A-Za-z_][\w.]*(?:Error|Exception)):", child.get("message") or "")
                     if tag == "failure" and not etype and m and not ASSERTION_TYPE_RX.search(m.group(1)):
                         outcome, etype = "error", m.group(1)
+                    elif tag == "failure" and not etype and m:
+                        # pytest writes an assertion failure without a type: keep its class, so the
+                        # word lists never read the test's own text (version 0.3.1, finding I4).
+                        etype = m.group(1)
                     break
                 if tag == "skipped":
                     outcome, etype, message = "skipped", "skip", child.get("message") or ""
@@ -1290,6 +1385,13 @@ def python_definitions(source):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 funcs.setdefault(prefix + node.name, []).append(node)
                 names.add(node.name)
+                if prefix:
+                    # Attributes a method sets on self are names of the class (version 0.3.1, finding I2).
+                    for sub in ast.walk(node):
+                        for target in getattr(sub, "targets", None) or ([sub.target] if isinstance(sub, (ast.AnnAssign, ast.AugAssign)) else []):
+                            if (isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name)
+                                    and target.value.id == "self"):
+                                names.add(target.attr)
             elif isinstance(node, ast.ClassDef):
                 names.add(node.name)
                 visit(node.body, prefix + node.name + ".")
@@ -1297,8 +1399,8 @@ def python_definitions(source):
                 targets = node.targets if isinstance(node, ast.Assign) else [node.target]
                 for target in targets:
                     if isinstance(target, ast.Name):
-                        if not prefix:
-                            names.add(target.id)
+                        # Module names and, since 0.3.1, class attributes.
+                        names.add(target.id)
                         if isinstance(node.value, ast.Lambda):
                             funcs.setdefault(prefix + target.id, []).append(node.value)
                             names.add(target.id)
@@ -1359,7 +1461,23 @@ def python_module_name(path):
     return p.replace("/", ".")
 
 
-def added_symbols(repo, base, head, protected_changes, diff, renames=None):
+def _body_dump(node):
+    """A function's code without its docstring, to see whether a change edited it."""
+    body = [stmt for stmt in getattr(node, "body", []) if not _is_docstring(stmt)] if not isinstance(node, ast.Lambda) else [node.body]
+    return ast.dump(ast.Module(body=body, type_ignores=[])) + ast.dump(node.args)
+
+
+def _top_values(tree):
+    values = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            values[node.targets[0].id] = ast.dump(node.value)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            values[node.target.id] = ast.dump(node.value)
+    return values
+
+
+def added_symbols(repo, base, head, protected_changes, diff, renames=None, modified=None, owners=None):
     """Names the change adds in protected files, and the Python functions to probe per file.
 
     protected_changes: list of (status, path) for protected files that exist on the head.
@@ -1368,6 +1486,12 @@ def added_symbols(repo, base, head, protected_changes, diff, renames=None):
     Returns (names, python_functions) where python_functions maps a file to the
     qualified names of functions that are new on the head, or whose signature
     gained a parameter. Stubs (is_stub) are left out of python_functions.
+
+    modified, when a list is given, receives the existing code the change edits
+    (version 0.3.1, finding D1 of the 0.3.0 audit): Python functions whose code
+    changed without gaining a parameter, top-level names whose value changed,
+    and, for other languages, the files where the change removed or replaced
+    lines. A probe of the new functions shows nothing about that code.
     """
     renames = renames or {}
     names, py_functions = set(), {}
@@ -1375,9 +1499,11 @@ def added_symbols(repo, base, head, protected_changes, diff, renames=None):
         for line in diff.get(path, {}).get("added", []):
             for rx in DEFINITION_PATTERNS:
                 m = rx.match(line)
-                if m:
+                if m and m.group(1) not in DEFINITION_KEYWORDS:
                     names.add(m.group(1))
         if not path.endswith(".py"):
+            if modified is not None and status != "A" and [l for l in diff.get(path, {}).get("removed", []) if l.strip()]:
+                modified.append(path)
             continue
         head_src = show_file(repo, head, path)
         if head_src is None:
@@ -1406,9 +1532,21 @@ def added_symbols(repo, base, head, protected_changes, diff, renames=None):
                 old_params = _parameter_names(base_funcs[q][-1])
                 new_params = _parameter_names(head_funcs[q][-1])
                 names.update(new_params - old_params)
+                if owners is not None:
+                    for param in new_params - old_params:
+                        owners.setdefault(param, set()).add(q)
                 if len(new_params - old_params) > len(old_params - new_params):
                     names.add(q.split(".")[-1])
                     widened.append(q)
+        if modified is not None and base_src is not None:
+            for q in head_funcs:
+                if q in base_funcs and q not in widened and _body_dump(head_funcs[q][-1]) != _body_dump(base_funcs[q][-1]):
+                    modified.append(q)
+            try:
+                old_values, new_values = _top_values(ast.parse(base_src)), _top_values(ast.parse(head_src))
+                modified.extend(n for n, v in new_values.items() if n in old_values and old_values[n] != v)
+            except (SyntaxError, ValueError):
+                pass
         targets = [q for q in new_funcs + widened if not all(is_stub(n) for n in head_funcs[q])]
         if targets:
             py_functions[path] = targets
@@ -1424,7 +1562,7 @@ def added_symbols(repo, base, head, protected_changes, diff, renames=None):
 # --------------------------------------------------------------------------
 
 PROOF_CLASSES = ("failed-assertion",)
-NEW_CODE_CLASSES = ("errored-new-symbol", "errored-missing-file")
+NEW_CODE_CLASSES = ("errored-new-symbol", "errored-missing-file", "errored-unknown-name")
 
 
 def missing_symbol_name(text, added, patterns):
@@ -1447,6 +1585,7 @@ def names_added_path(text, added_paths):
     return None
 
 
+CONTROL_RX = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 ANSI_RX = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
@@ -1471,14 +1610,46 @@ def missing_symbol_line(rec, ctx):
     return None
 
 
-def classify_error(rec, ctx, fallback):
+NONE_ATTRIBUTE_RX = re.compile(r"'NoneType' object has no attribute")
+
+
+def unknown_missing_name(text, patterns):
+    """A name that a missing-symbol pattern captures, whether or not the change adds it."""
+    if NONE_ATTRIBUTE_RX.search(text):
+        # A function that returned None where an object was due is behaviour, not a missing name.
+        return None
+    for rx in patterns:
+        m = rx.search(text)
+        if m:
+            return m.group(1)
+    return None
+
+
+def classify_error(rec, ctx, fallback, file_level=False):
+    """The class of one error on the base.
+
+    Version 0.3.1 (findings I2 and I4 of the 0.3.0 audit): the environment words
+    ("timed out", "FileNotFoundError" ...) apply only to a load error or to output
+    without a report, never to an exception raised inside a test, where they are
+    the behaviour under test; and an exception inside a test that names a missing
+    name the guard cannot link to the change (a dictionary key, an attribute) is
+    "errored-unknown-name": never proof, at most ok-unproven.
+    """
     text = (rec.get("type") or "") + ": " + (rec.get("message") or "")
-    if missing_symbol_name(text, ctx["added"], ctx["missing_rx"]):
+    name = missing_symbol_name(text, ctx["added"], ctx["missing_rx"])
+    ctx["_last_name"] = name
+    if name:
         return "errored-new-symbol"
     if names_added_path(text, ctx["added_paths"]):
         return "errored-missing-file"
-    if any(p and p in text for p in ctx["env_patterns"]):
-        return "errored-environment"
+    if file_level or rec.get("file_level"):
+        if any(p and p in text for p in ctx["env_patterns"]):
+            return "errored-environment"
+        return fallback
+    unknown = unknown_missing_name(text, ctx["missing_rx"])
+    if unknown:
+        ctx["_last_name"] = unknown
+        return "errored-unknown-name"
     return fallback
 
 
@@ -1506,6 +1677,8 @@ def classify_base(head_passed, base_records, ctx):
     base_by_id = {r["id"]: r for r in base_records if not r["file_level"]}
     file_errors = [r for r in base_records if r["file_level"]]
     classes = {}
+    # The missing name behind each "new code" class, for the verdict (version 0.3.1).
+    matched = ctx.setdefault("matched", {})
     for t in head_passed:
         b = base_by_id.get(t["id"])
         if b is None:
@@ -1513,7 +1686,8 @@ def classify_base(head_passed, base_records, ctx):
             if err is None:
                 classes[t["id"]] = ("not-collected", "")
             else:
-                cls = classify_error(err, ctx, "errored-load")
+                cls = classify_error(err, ctx, "errored-load", file_level=True)
+                matched[t["id"]] = ctx.get("_last_name")
                 detail = (missing_symbol_line(err, ctx) if cls == "errored-new-symbol" else None) or first_line(err)
                 classes[t["id"]] = (cls, detail)
             continue
@@ -1529,8 +1703,10 @@ def classify_base(head_passed, base_records, ctx):
                 # (a TypeError in a Jest or Vitest test) is an error (version 0.3.0).
                 fallback = "errored-other" if JS_ERROR_RX.match(b.get("type") or "") else "failed-assertion"
                 classes[t["id"]] = (classify_error(b, ctx, fallback), first_line(b))
+                matched[t["id"]] = ctx.get("_last_name")
         else:
             classes[t["id"]] = (classify_error(b, ctx, "errored-other"), first_line(b))
+            matched[t["id"]] = ctx.get("_last_name")
     return classes
 
 
@@ -1569,7 +1745,7 @@ def first_decision(classes, cfg):
     return None
 
 
-def final_decision(proof, new, probe_state, cfg, has_report=True, only_errored_proof=False):
+def final_decision(proof, new, probe_state, cfg, has_report=True, only_errored_proof=False, unproven=()):
     """The verdict once the base runs agree and the probe (if any) has covered every added function.
 
     probe_state: "covered" when the probe ran and every added function was noticed,
@@ -1580,6 +1756,12 @@ def final_decision(proof, new, probe_state, cfg, has_report=True, only_errored_p
             return GuardStop(PASSED, "ok", MESSAGES["ok-exit-code"])
         return GuardStop(PASSED, "ok", MESSAGES["ok-errored"] if only_errored_proof else MESSAGES["ok"])
     if new:
+        if unproven and probe_state == "covered":
+            # Version 0.3.1: the probe covered the new functions, but not everything the tests rest on.
+            what = " and ".join(unproven)
+            if cfg["base_error_policy"] == "stop":
+                return GuardStop(STOPPED, "base-error-only", MESSAGES["base-error-only-partial"].format(what=what), HINTS["base-error-only"])
+            return GuardStop(PASSED, "ok-unproven", MESSAGES["ok-unproven-partial"].format(what=what))
         if probe_state == "covered":
             return GuardStop(PASSED, "ok-new-code", MESSAGES["ok-new-code"])
         if cfg["base_error_policy"] == "stop":
@@ -1594,6 +1776,8 @@ MESSAGES = {
     "ok-errored": "The new or changed tests raise an exception on the base commit that no missing name explains and pass on the head commit, so they show the change in behaviour.",
     "ok-new-code": "The new tests could not run on the base because the code they call is new in this change, and they fail when that new code is replaced by an empty body, so they depend on what the change adds.",
     "ok-unproven": "The new tests fail on the base only because the code they call is new in this change, and no probe ran, so the guard cannot show that they check its behaviour; a reviewer should read the assertions.",
+    "ok-unproven-partial": "The new tests fail on the base only because code this change adds is missing there, and the probe covered the new functions but not {what}, so the guard cannot show that the tests check all of this change; a reviewer should read the assertions and that code.",
+    "base-error-only-partial": "The new tests fail on the base only because code this change adds is missing there, and the probe covered the new functions but not {what}, which shows nothing about that part, so the change is stopped (base_error_policy stop).",
     "base-error-only": "The new tests fail on the base only because the code they call does not exist there yet, which shows nothing about behaviour, and the probe is off or not available for this language.",
     "probe-passes": "The new tests still pass when the body of {functions} is replaced by an empty return, so they would not notice that code being wrong.",
     "probe-broken": "The guard could not replace the body of {functions} without breaking the file, so it could not run the probe.",
@@ -1799,6 +1983,10 @@ def run_probe(cfg, repo, head, state, tests_changed, head_passed_ids, targets, b
         say("probe: %s with an empty body -> %s (%.2f s)" % (names, "noticed by the tests" if covered else "NOT noticed by the tests", res["secs"]))
         if not covered:
             not_covered.extend(group)
+            if cfg["probe_scope"] == "each":
+                # One function nobody notices already stops the change; do not spend the
+                # budget on the others (version 0.3.1, D9 of the 0.3.0 audit).
+                break
     return not_covered
 
 
@@ -2016,6 +2204,20 @@ def evaluate(args, cfg, state, say):
         raise GuardStop(SKIPPED, "skip",
                         "The guard was skipped by %s with the reason \"%s\", and this run is recorded in the log." % (skip_by, skip_reason))
 
+    # A protected pattern that matches no file protects nothing, which is almost
+    # always a typo (version 0.3.1, finding I7): say so, and fail in block mode.
+    tree_files = set()
+    for rev in (base, head):
+        tree_files.update(git(repo, "ls-tree", "-r", "--name-only", "-z", rev).stdout.decode("utf-8", "replace").split("\0"))
+    tree_files.discard("")
+    unused = [p for p, rx in zip(cfg["protected"], protected_rx) if not any(rx.match(f) for f in tree_files)]
+    if unused:
+        raise GuardStop(ERROR, "config",
+                        "The protected pattern%s %s match%s no file of the base or the head commit, so %s nothing; the guard refuses to run with a pattern that cannot be meant." % (
+                            "s" if len(unused) > 1 else "", ", ".join("'%s'" % p for p in unused),
+                            "" if len(unused) > 1 else "es", "they protect" if len(unused) > 1 else "it protects"),
+                        "Fix the pattern in change-guard.json on the target branch (for example src/** for every file under src/), or remove it.")
+
     if not changes:
         raise GuardStop(OUT_OF_SCOPE, "no-change", "The head commit changes no file against the base, so there is nothing to check.")
     if not protected:
@@ -2046,7 +2248,8 @@ def evaluate(args, cfg, state, say):
     if "generated" in auto and cfg["generated_markers"]:
         # The marker must already be on the base version: a change cannot exempt itself by adding one.
         live = [p for p in protected if protected_status[p] != "D"]
-        if live and all(protected_status[p] == "M"
+        # A deleted protected file has no marker and is not generated (version 0.3.1, M1).
+        if live and len(live) == len(protected) and all(protected_status[p] == "M"
                         and has_generated_marker(repo, base, p, cfg["generated_markers"])
                         and has_generated_marker(repo, head, p, cfg["generated_markers"]) for p in live):
             raise GuardStop(EXEMPT, "generated", MESSAGES["generated"])
@@ -2060,8 +2263,18 @@ def evaluate(args, cfg, state, say):
     # What the change adds, and notes on the test diff.
     live_protected = [(protected_status[p], p) for p in protected if protected_status[p] != "D"]
     diff = diff_by_file(repo, base, head, list(protected) + list(test_status))
-    names_added, py_functions = added_symbols(repo, base, head, live_protected, diff, renames)
-    added_paths = [p for st, p in changes if st in ("A", "R")]
+    modified_code, param_owners = [], {}
+    names_added, py_functions = added_symbols(repo, base, head, live_protected, diff, renames, modified=modified_code,
+                                              owners=param_owners)
+    # Files the base lacks because the change adds them. Version 0.3.1 (finding I4):
+    # only protected ones; a test file or a helper the change adds is laid over the
+    # base, so it is never missing there, and its name in an error explains nothing.
+    added_paths = [p for st, p in changes if st in ("A", "R") and p in protected_status]
+    added_other = [p for st, p in changes if st in ("A", "R") and p not in protected_status]
+    edited_other = [p for st, p in changes if st == "M" and p not in protected_status]
+    if not cfg["overlay_added_files"]:
+        # Not laid over, so really missing on the base.
+        added_paths += [p for p in added_other if not matches_any(p, tests_rx) and p not in support]
     edited_tests = [p for p, s in test_status.items() if s in ("M", "R")]
     if cfg["notes"]:
         snapshot_files = [p for _, p in changes if matches_any(p, snapshot_rx)]
@@ -2098,8 +2311,12 @@ def evaluate(args, cfg, state, say):
     state["worktrees"].append(base_dir)
     overlay = [(p, head, p) for p in list(tests_changed) + support]
     if cfg["overlay_added_files"]:
-        overlay += [(p, head, p) for p in added_paths
-                    if p not in protected_status and not matches_any(p, tests_rx) and p not in support]
+        # Version 0.3.1 (finding I3 of the 0.3.0 audit): every file the change adds or
+        # edits outside the protected paths (a test helper, a fixture, a build file) is
+        # laid over the base too, so the base run differs from the head run in the
+        # protected code only.
+        overlay += [(p, head, p) for p in added_other + edited_other
+                    if not matches_any(p, tests_rx) and p not in support]
     # A renamed protected file keeps its old content on the base, under its new
     # name: the rename is not the behaviour, so tests that import the new name
     # meet the old code.
@@ -2108,6 +2325,14 @@ def evaluate(args, cfg, state, say):
     for path, rev, source in overlay:
         data = git(repo, "show", "%s:%s" % (rev, source)).stdout
         target = os.path.join(base_dir, *path.split("/"))
+        # A file that became a folder, or a folder that became a file (version 0.3.1, M7).
+        parts = path.split("/")
+        for i in range(1, len(parts)):
+            parent = os.path.join(base_dir, *parts[:i])
+            if os.path.lexists(parent) and not os.path.isdir(parent):
+                os.remove(parent)
+        if os.path.isdir(target) and not os.path.islink(target):
+            shutil.rmtree(target)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "wb") as fh:
             fh.write(data)
@@ -2246,8 +2471,8 @@ def evaluate(args, cfg, state, say):
     if mode == "python" and py_targets:
         not_covered = run_probe(cfg, repo, head, state, tests_changed, {t["id"] for t in head_passed}, py_targets, budget, say)
         if not_covered and (cfg["probe_scope"] == "each" or len(not_covered) == len(py_targets)):
-            names = ", ".join(q for _, q in not_covered)
-            state["probe"] = "not-covered:" + ",".join(q for _, q in not_covered)
+            names = list_files([q for _, q in not_covered], 6)
+            state["probe"] = "not-covered:" + ",".join(q for _, q in not_covered[:6])
             raise GuardStop(STOPPED, "probe-passes", MESSAGES["probe-passes"].format(functions=names), HINTS["probe-passes"])
         state["probe"] = "covered"
         probe_state = "covered"
@@ -2286,8 +2511,33 @@ def evaluate(args, cfg, state, say):
             if cfg["check_edited_tests"] == "stop":
                 raise GuardStop(STOPPED, "edited-test-would-fail", MESSAGES["edited-test-would-fail"].format(files=", ".join(failing)), HINTS["edited-test-would-fail"])
 
-    # 6. The verdict.
-    verdict = final_decision(proof, new, probe_state, cfg, has_report=has_report, only_errored_proof=only_errored)
+    # 6. The verdict. Version 0.3.1 (findings D1 and I2 of the 0.3.0 audit): without
+    # proof on the base, ok-new-code needs every missing name to be a function the
+    # probe covered, and no edit to existing code that no test showed failing.
+    unproven = []
+    if not proof and new:
+        probed = set()
+        for _, q in py_targets:
+            parts = q.split(".")
+            # The function, and the classes it sits in (a new class whose methods were probed).
+            probed.update(parts)
+            probed.add(q)
+        probed.update(param for param, funcs in param_owners.items() if funcs & {q for _, q in py_targets})
+        for path in added_paths:
+            if path.endswith(".py") and path in protected_status:
+                module = python_module_name(path)
+                probed.update((module, module.split(".")[-1]))
+        matched = ctx.get("matched", {})
+        loose = sorted({matched.get(t) or classes[t][0] for t in new
+                        if classes[t][0] != "errored-new-symbol" or matched.get(t) not in probed})
+        if loose and probe_state == "covered":
+            unproven.append("the new names %s, which no probe covered" % list_files(loose, 4))
+        if modified_code:
+            what = "the existing code it changes (%s)" % list_files(modified_code, 4)
+            unproven.append(what)
+            add_note(state, "changed-code-unproven", "this change also edits %s, and no test showed failing on the base because of that edit; a reviewer should check it" % what)
+    verdict = final_decision(proof, new, probe_state, cfg, has_report=has_report, only_errored_proof=only_errored,
+                             unproven=unproven)
     raise verdict
 
 
@@ -2336,6 +2586,53 @@ def file_state(path):
     except OSError:
         return False
     return len(data), hashlib.sha256(data).hexdigest()
+
+
+class LogLock:
+    """An exclusive lock next to the log, held from before the tests run until this run's line is written.
+
+    Version 0.3.1 (finding D3 of the 0.3.0 audit): two guards in one checkout
+    shared the log, and the slower one read the other's line as tampering and
+    removed it. With the lock, a second run waits until the first has written its
+    line; runs on one checkout take turns. Unix only (fcntl); elsewhere there is
+    no lock and parallel runs on one log are not supported.
+    """
+
+    def __init__(self, log_path):
+        self.path = log_path + ".lock"
+        self.fh = None
+
+    def acquire(self, seconds, say=None):
+        try:
+            import fcntl
+        except ImportError:
+            return True
+        try:
+            os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+            self.fh = open(self.path, "a+")
+        except OSError:
+            return False
+        deadline = time.monotonic() + max(seconds, 1)
+        told = False
+        while True:
+            try:
+                fcntl.flock(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return True
+            except OSError:
+                if time.monotonic() > deadline:
+                    return False
+                if say and not told:
+                    say("waiting for another change guard run that writes to the same log")
+                    told = True
+                time.sleep(0.2)
+
+    def release(self):
+        if self.fh is not None:
+            try:
+                self.fh.close()
+            except OSError:
+                pass
+            self.fh = None
 
 
 def watch_files(paths):
@@ -2462,11 +2759,19 @@ def main(argv=None):
     lines = []
 
     def say(text):
+        # File names and test ids come from the change: a line break in one must not
+        # print a forged "result:" or "::error" line (version 0.3.1, M6).
+        text = CONTROL_RX.sub(lambda m: "\\x%02x" % ord(m.group(0)), text)
         lines.append(text)
         print(text, flush=True)
 
     state = {"worktrees": [], "tmp_parent": None, "notes": [], "probe": None}
-    mode = args.mode or os.environ.get("CHANGE_GUARD_MODE") or "report"
+    # Case and spaces do not matter (version 0.3.1); an unknown mode is refused below and fails closed.
+    mode = normal_mode(args.mode or os.environ.get("CHANGE_GUARD_MODE") or "report")
+    bad_mode = None
+    if mode not in ("report", "block"):
+        # Fail closed: the owner meant some mode, and only block is safe (finding I1).
+        bad_mode, mode = mode, "block"
     cfg = None
     watched = {}
     start = time.monotonic()
@@ -2475,8 +2780,26 @@ def main(argv=None):
         path = args.log or (cfg["log_file"] if cfg else DEFAULTS["log_file"])
         return path if os.path.isabs(path) else os.path.join(args.repo, path)
 
+    log_lock = LogLock(os.devnull)
+    # A cancel ends the run like any other: worktrees and test processes are
+    # removed, and the run gets its verdict and its log line.
+    previous = {}
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            previous[signum] = signal.signal(signum, _on_signal)
+        except (ValueError, OSError):
+            pass
+
     try:
         try:
+            if not os.path.isdir(args.repo) or git(args.repo, "rev-parse", "--git-dir", check=False).returncode != 0:
+                # Version 0.3.1 (D14): before, this read as a missing base commit.
+                raise GuardStop(ERROR, "git", "The folder %s is not a git repository, so the guard cannot judge any change there." % args.repo,
+                                "Run the guard with --repo pointing at the checkout of the repository.")
+            if bad_mode is not None:
+                say("change-guard %s | mode %s | the mode setting is not valid" % (VERSION, mode))
+                raise GuardStop(ERROR, "config", "CHANGE_GUARD_MODE must be report or block, so the guard cannot run with %r; it fails the check until the value is fixed." % bad_mode,
+                                "Set the mode to report or block (case and spaces do not matter).")
             # The rules come from the base commit, never from the change being judged.
             config_lines = []
             try:
@@ -2491,14 +2814,14 @@ def main(argv=None):
             except GuardStop as stop:
                 if stop.cause != "config":
                     raise
+                if getattr(stop, "fail_closed", False):
+                    mode = "block"
                 # The skip request is read before the configuration is judged, and a
                 # change that only repairs the base's configuration may pass (version 0.2.2).
                 say("change-guard %s | mode %s | the configuration could not be loaded" % (VERSION, mode))
                 raise config_unloadable(args, stop, state, say)
-            if not args.mode and not os.environ.get("CHANGE_GUARD_MODE"):
+            if not args.mode and not (os.environ.get("CHANGE_GUARD_MODE") or "").strip():
                 mode = cfg["mode"]
-            if mode not in ("report", "block"):
-                raise GuardStop(ERROR, "config", "CHANGE_GUARD_MODE must be report or block, so the guard cannot run with %r." % mode)
             if args.time_budget is not None:
                 cfg["time_budget_seconds"] = args.time_budget
             state["budget"] = Budget(cfg["time_budget_seconds"])
@@ -2507,6 +2830,9 @@ def main(argv=None):
                 say(text)
             # Files the tests must leave alone: the log, the summary, the CI
             # platform's control files and the guard's own scripts.
+            log_lock.path = log_location() + ".lock"
+            if not log_lock.acquire(cfg["time_budget_seconds"], say):
+                add_note(state, "log-lock-timeout", "another run held the log for longer than the time budget, so this run did not wait for it")
             watched = watch_files([log_location(), args.summary, os.path.abspath(__file__),
                                    os.path.join(HERE, "cg_unittest_report.py")]
                                   + [os.environ.get(name) for name in CI_CONTROL_FILES])
@@ -2514,6 +2840,10 @@ def main(argv=None):
             outcome = GuardStop(ERROR, "internal", "The guard ended without a result, which is a bug in the guard.")
         except GuardStop as stop:
             outcome = stop
+        except GuardCancelled as exc:
+            outcome = GuardStop(ERROR, "cancelled",
+                                "The guard was cancelled (signal %d) before it reached a verdict, so nothing was judged." % exc.signum,
+                                "Run the check again.")
         except BudgetExceeded as exc:
             outcome = GuardStop(TIMEOUT, "time-budget",
                                 "The guard stopped after its time budget of %.0f seconds while running the tests on the %s, so it could not judge this change." % (
@@ -2569,12 +2899,17 @@ def main(argv=None):
     log_path = log_location()
     try:
         os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
+        if log_lock.fh is None:
+            # A run that ended before the tests (for example a configuration error) still waits its turn.
+            log_lock.path = log_path + ".lock"
+            log_lock.acquire(30)
         with open(log_path, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
         shown = os.path.relpath(log_path, args.repo) if log_path.startswith(args.repo + os.sep) else os.path.basename(log_path)
         say("log: one line appended to %s" % shown)
     except OSError as exc:
         say("log: could not write the log file (%s)" % exc)
+    log_lock.release()
 
     if os.environ.get("GITHUB_ACTIONS") == "true":
         level = "error" if (blocks and mode == "block") else ("warning" if blocks else "notice")
@@ -2621,6 +2956,11 @@ def main(argv=None):
         except OSError as exc:
             say("result: could not write %s (%s)" % (args.result_json, exc))
 
+    for signum, handler in previous.items():
+        try:
+            signal.signal(signum, handler)
+        except (ValueError, OSError, TypeError):
+            pass
     if blocks and mode == "block":
         return 2 if outcome.result == ERROR else 1
     return 0

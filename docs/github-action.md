@@ -55,7 +55,7 @@ jobs:
       # (for example actions/setup-python and installing dependencies).
 
       - name: Change guard
-        uses: m-atek/change-guard@[[COMMIT HASH OF THE RELEASE]] # v0.3.0
+        uses: m-atek/change-guard@<full commit hash of the v0.3.1 release> # v0.3.1
         with:
           mode: ${{ vars.CHANGE_GUARD_MODE || 'report' }}
 
@@ -69,7 +69,7 @@ jobs:
           retention-days: 90
 ```
 
-Pin the action to the full commit hash of a release, with the version as a comment, as above. A tag such as `v0.3.0` can be moved by whoever controls the repository; a full commit hash cannot. If your organisation uses workflow lockfiles, the lockfile records the commit for you. Pin `actions/checkout` and `actions/upload-artifact` the same way if your policy asks for it.
+Pin the action to the full commit hash of a release, with the version as a comment, as above. Replace `<full commit hash of the v0.3.1 release>` with the 40-character hash shown for the release tag; the workflow does not load with the text in angle brackets. A tag such as `v0.3.1` can be moved by whoever controls the repository; a full commit hash cannot. If your organisation uses workflow lockfiles, the lockfile records the commit for you. Pin `actions/checkout` and `actions/upload-artifact` the same way if your policy asks for it.
 
 **3. Open a pull request** with these two files. The target branch has no `change-guard.json` yet, so this one pull request is judged by the configuration it brings, and the output says so (note `config-from-head`). From the next pull request on, the configuration always comes from the target branch, so a pull request cannot change the rules it is judged by.
 
@@ -165,7 +165,7 @@ Outside a pull request (for example on `push` or `workflow_dispatch`), set `base
 ## What the action does
 
 1. Refuses to run on `pull_request_target`, and refuses a `mode` other than `report` or `block`.
-2. Copies `change_guard.py` and `cg_unittest_report.py` from the action's own files, at the version you pinned, into a fresh folder under `$RUNNER_TEMP`, and runs them from there. It never runs a copy of the guard that the pull request brings.
+2. Copies `change_guard.py` and `cg_unittest_report.py` from the action's own files, at the version you pinned, into a fresh folder under `$RUNNER_TEMP`, and runs them from there. It never runs a copy of the guard that the pull request brings. Every Python call of the action runs with `-I` (isolated mode), so a `json.py` or a `sitecustomize.py` in the pull request's checkout, or a `PYTHONPATH` that points there, cannot run code inside the action. Before 0.3.1 it could (finding B1 of the 0.3.0 audit): a pull request that added a `json.py` ran it inside the action's steps and could record a skip under any name. The self-test `.github/workflows/action-selftest.yml` plants both files on every run and checks that neither runs. The skip values reach the guard only when the skip step found the label.
 3. If the skip label is on the pull request, reads who added it and the reason line.
 4. Runs the guard with the base and head commits, writes the step summary, prints the log line, appends it to `.change-guard/runs.log` and sets the outputs.
 
