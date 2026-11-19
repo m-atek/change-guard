@@ -1,9 +1,9 @@
 {
-  "_comment": "Example configuration for the change guard, version 0.3.2. Copy to change-guard.json at the repository root, commit it to the target branch (the guard reads it from the base commit, never from the change it judges) and fill in the paths you want to protect. Keys that start with an underscore are comments. Every version 0.2.0 and 0.2.1 key is optional; the values below are the defaults except report_format and test_command.",
+  "_comment": "Example configuration for the change guard, version 0.3.3. Copy to change-guard.json at the repository root, commit it to the target branch (the guard reads it from the base commit, never from the change it judges) and fill in the paths you want to protect. Keys that start with an underscore are comments. Every version 0.2.0 and 0.2.1 key is optional; the values below are the defaults except report_format and test_command.",
   "protected": ["src/**"],
   "exempt": ["docs/**", "*.md", "requirements*.txt", "package-lock.json"],
   "tests": ["tests/**/test_*.py"],
-  "test_support": ["tests/**/conftest.py", "tests/**/helpers.py"],
+  "test_support": ["**/conftest.py", "tests/**/helpers.py"],
   "test_command": "{python} {cg_tools}/cg_unittest_report.py {report} {files}",
   "_other_languages": "docs/languages.md has a ready-to-copy configuration for Vitest, Jest, Maven, Gradle, Kotlin, Go, .NET, PHPUnit, RSpec and Swift.",
   "_test_command_pytest": "{python} -m pytest -q -p no:cacheprovider --continue-on-collection-errors --junit-xml={report} {files}   (with report_format junit-xml and inconclusive_exit_codes [3, 4])",

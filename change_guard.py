@@ -6,7 +6,7 @@
 Rule: a change to protected paths must bring a new or changed test file, and
 those test files must fail on the base commit's code and pass on the head.
 
-How it judges a change (version 0.3.2):
+How it judges a change (version 0.3.3):
   1. It reads its configuration from the base commit (the target branch's
      rules), never from the change it judges. If that configuration cannot be
      loaded, a recorded skip or a change that only repairs it can still pass.
@@ -78,7 +78,7 @@ import tokenize
 import traceback
 import xml.etree.ElementTree as ElementTree
 
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 LOG_VERSION = "cg2"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -234,6 +234,8 @@ MISSING_SYMBOL_PATTERNS = [
     r"No module named '([\w.]+)'",
     # A dictionary key or a vars()/globals() lookup (version 0.3.1, findings I2 and D6).
     r"KeyError: '(\w+)'",
+    # pytest: a fixture the base does not have (version 0.3.3, C-N1).
+    r"fixture '(\w+)' not found",
     r"got an unexpected keyword argument '(\w+)'",
     r"(\w+)\(\) takes (?:from )?\d+ (?:to \d+ )?positional arguments? but \d+ (?:was|were) given",
     r"(\w+)\(\) missing \d+ required (?:positional|keyword-only) arguments?",
@@ -1579,7 +1581,11 @@ def _scope_statements(tree):
                 label = "import"
             else:
                 label = ("code in the body of class %s" % prefix[:-1]) if prefix else "module-level code"
-            items.append((ast.dump(node), label, node))
+            dump = ast.dump(node)
+            if isinstance(node, ast.AnnAssign) and node.value is not None and isinstance(node.target, ast.Name):
+                # A type hint added to or changed on a value is not an edit of it (version 0.3.3, C-N3).
+                dump = ast.dump(ast.Assign(targets=[node.target], value=node.value, type_comment=None))
+            items.append((dump, label, node))
     visit(tree.body, "")
     return scopes, headers
 
@@ -1647,7 +1653,25 @@ def python_edits(base_tree, head_tree, base_funcs, head_funcs):
                 if old_names is not None and new_names is not None and old_names <= new_names:
                     continue
             labels.append(label)
+        # A new statement that assigns to a name the base already has in this scope
+        # changes its value (version 0.3.3, C-N3); reordered statements are not seen.
+        bound = set(base_funcs) | set(base_headers) | {scope + n for _, _, b in items for n in _assigned(b)}
+        in_base = {}
+        for dump, _, _ in items:
+            in_base[dump] = in_base.get(dump, 0) + 1
+        for dump, label, node in head_items:
+            if in_base.get(dump):
+                in_base[dump] -= 1
+                continue
+            labels.extend(scope + n for n in _assigned(node) if n != "__all__" and scope + n in bound)
     return list(dict.fromkeys(labels))
+
+
+def _assigned(node):
+    """The plain names an assignment statement binds."""
+    targets = node.targets if isinstance(node, ast.Assign) else (
+        [node.target] if isinstance(node, (ast.AnnAssign, ast.AugAssign)) else [])
+    return [t.id for t in targets if isinstance(t, ast.Name)]
 
 
 def added_symbols(repo, base, head, protected_changes, diff, renames=None, modified=None, owners=None):
@@ -2363,7 +2387,8 @@ def test_material_rule(tests_patterns, tests_changed):
         folder = os.path.dirname(path)
         if folder:
             folders.add(folder + "/")
-    return lambda path: any(path.startswith(f) for f in folders)
+    # Every conftest.py is pytest's own test material, wherever it lies (version 0.3.3, C-N1).
+    return lambda path: os.path.basename(path) == "conftest.py" or any(path.startswith(f) for f in folders)
 
 
 def protected_pattern_problems(cfg, files):
@@ -2722,6 +2747,10 @@ def evaluate(args, cfg, state, say):
             classes = {t: (c, d.replace(root, "<temp>")) for t, (c, d) in classes.items()}
         return res, classes
 
+    # Edited files outside the protected paths that the base run kept as they are
+    # on the base (version 0.3.3, C-N2): name them where the base run could not be used.
+    kept = [p for p in edited_other if p not in overlay_paths]
+    kept_hint = ("The base run kept %s as on the base; if the tests need the new version there, list those files under test_support. " % list_files(kept, 4)) if kept else ""
     base_res, classes = base_run()
     proof = new = other = []
     only_errored = False
@@ -2735,6 +2764,8 @@ def evaluate(args, cfg, state, say):
                 say("  %-22s %s%s" % (cls, tid, (" | " + detail) if detail else ""))
         stop = first_decision(classes, cfg)
         if stop:
+            if stop.cause == "base-error-unrelated" and kept_hint:
+                stop.hint = kept_hint + stop.hint
             raise stop
         say("base: %d by assertion or exception (proof), %d because new code is missing, %d for other reasons (%.2f s)" % (
             len(proof), len(new), len(other), base_res["secs"]))
@@ -2858,6 +2889,8 @@ def evaluate(args, cfg, state, say):
             add_note(state, "changed-code-unproven", "this change also edits existing code (%s), and no test showed failing on the base because of that edit; a reviewer should check it" % listed)
     verdict = final_decision(proof, new, probe_state, cfg, has_report=has_report, only_errored_proof=only_errored,
                              unproven=unproven)
+    if kept_hint and has_report and verdict.cause in ("ok-unproven", "base-error-only") and any(classes[t][0] == "errored-unknown-name" for t in new):
+        add_note(state, "kept-on-base", kept_hint.rstrip())
     raise verdict
 
 
@@ -3137,6 +3170,11 @@ def main(argv=None):
 
     try:
         try:
+            if os.path.isdir(args.repo) and all(os.path.exists(os.path.join(args.repo, n)) for n in ("HEAD", "objects", "refs")) \
+                    and not os.path.exists(os.path.join(args.repo, ".git")):
+                # Version 0.3.3 (C-N4): git runs with safe.bareRepository=explicit, so a bare clone is refused; say so.
+                raise GuardStop(ERROR, "git", "The folder %s is a bare repository, which the guard does not support, so it cannot judge any change there." % args.repo,
+                                "Point --repo at a checkout or a linked worktree (git worktree add) of the repository.")
             if not os.path.isdir(args.repo) or git(args.repo, "rev-parse", "--git-dir", check=False).returncode != 0:
                 # Version 0.3.1 (D14): before, this read as a missing base commit.
                 raise GuardStop(ERROR, "git", "The folder %s is not a git repository, so the guard cannot judge any change there." % args.repo,

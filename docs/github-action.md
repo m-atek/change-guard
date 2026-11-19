@@ -57,7 +57,7 @@ jobs:
       # request's code with the whole job environment; prefer setup_command.
 
       - name: Change guard
-        uses: m-atek/change-guard@<full commit hash of the v0.3.2 release> # v0.3.2
+        uses: m-atek/change-guard@<full commit hash of the v0.3.3 release> # v0.3.3
         with:
           mode: ${{ vars.CHANGE_GUARD_MODE || 'report' }}
 
@@ -71,7 +71,7 @@ jobs:
           retention-days: 90
 ```
 
-Pin the action to the full commit hash of a release, with the version as a comment, as above. Replace `<full commit hash of the v0.3.2 release>` with the 40-character hash shown for the release tag; the workflow does not load with the text in angle brackets. A tag such as `v0.3.2` can be moved by whoever controls the repository; a full commit hash cannot. If your organisation uses workflow lockfiles, the lockfile records the commit for you. Pin `actions/checkout` and `actions/upload-artifact` the same way if your policy asks for it.
+Pin the action to the full commit hash of a release, with the version as a comment, as above. Replace `<full commit hash of the v0.3.3 release>` with the 40-character hash shown for the release tag; the workflow does not load with the text in angle brackets. A tag such as `v0.3.3` can be moved by whoever controls the repository; a full commit hash cannot. If your organisation uses workflow lockfiles, the lockfile records the commit for you. Pin `actions/checkout` and `actions/upload-artifact` the same way if your policy asks for it.
 
 **3. Open a pull request** with these two files. The target branch has no `change-guard.json` yet, so this one pull request is judged by the configuration it brings, and the output says so (note `config-from-head`). From the next pull request on, the configuration always comes from the target branch, so a pull request cannot change the rules it is judged by.
 

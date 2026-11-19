@@ -693,7 +693,8 @@ class RCN9BareFolders(unittest.TestCase):
         if plain.returncode == 0 and plain.stdout.strip() == b".":
             # This git reads the folder as a repository of its own; the guard must refuse it.
             self.assertEqual((res["result"], res["cause"], code), ("ERROR", "git", 2), out)
-            self.assertIn("is not a git repository", res["message"])
+            # Since 0.3.3 (C-N4) the refusal names the bare repository it found.
+            self.assertRegex(res["message"], "is not a git repository|is a bare repository")
         else:
             self.assertNotEqual(res["result"], "OUT_OF_SCOPE", out)
 
