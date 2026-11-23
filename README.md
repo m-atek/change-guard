@@ -207,7 +207,7 @@ Other options: `--repo`, `--mode`, `--log`, `--ref` (a label such as `pr-42` for
 
 The core check is the same for every language: the guard runs your test command on the head and on the base and reads the runner's per-test report. On 18 November 2026 it ran on GitHub's hosted Linux runner (ubuntu-26.04) with eleven runner set-ups outside Python, each on a tiny demonstration project in `tests/polyglot/` with five seeded changes, and every case gave the documented result (workflow `.github/workflows/polyglot.yml`, in a private demonstration repository):
 
-- TypeScript with Vitest 3.2.4 (`jest-json`)
+- TypeScript with Vitest 4.1.12 (`jest-json`; Vitest 3.2.4 until 23 November 2026)
 - JavaScript with Jest 29.7.0 (`jest-json`)
 - Java with Maven 3.9.15, Surefire 3.5.2 and JUnit 5 (`junit-xml`)
 - Go 1.27.4 with `go test -json` (`go-json`)

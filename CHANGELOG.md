@@ -8,7 +8,7 @@ The ids in brackets (R1 to R20, P1 to P4, K04, V3a to V7, K08, B1, I1 to I10, D1
 
 ## 0.3.3, 23 November 2026: the first public release
 
-The code of this version dates from 19 November 2026 and closes five points from a check of 0.3.2. It was released on 23 November 2026, with two later changes that touch no code of the guard: the workflow pins and the README sentence in the last lines below.
+The code of this version dates from 19 November 2026 and closes five points from a check of 0.3.2. It was released on 23 November 2026, with later changes that touch no code of the guard: the workflow pins, the Vitest fixture and the texts in the last lines below.
 
 A separate check of 0.3.2, done by an AI tool, found nothing blocking and five new points (C-N1 to C-N5). Version 0.3.2 had run green in this repository's own workflows on GitHub's hosted Linux runner (unit tests and seeded cases under Python 3.10 to 3.14, all eleven polyglot set-ups, the action's self-test with seven cases); the workflows repeat that for every later commit. Each code change below has a test in `tests/test_audit_033.py`.
 
@@ -19,6 +19,8 @@ A separate check of 0.3.2, done by an AI tool, found nothing blocking and five n
 - **C-N5:** the README names the creation times of the working copies among the signals a test written to lie can still read.
 - Texts: what remains of RC-N1 is stated in the README limits; which Python versions ran which version; the 0.3.2 runs on GitHub.
 - The repository's own workflows in `.github/workflows/` now pin every action they use to a full commit hash, with the version as a comment, as the documents advise users to do.
+- The Vitest demonstration project in `tests/polyglot/vitest` pins Vitest 4.1.12 instead of 3.2.4, after two advisories for the older version. The polyglot workflow gave the same nine results with it. The captured Vitest output under `tests/data/polyglot/` is still from 3.2.4.
+- The quick start writes out the checkout step with `fetch-depth: 0` and names the mode variable, and the action page says where the per-test results appear on GitHub. A run of the quick start in a second repository showed these three places where a reader could trip.
 - The README now names the two rare cases in which a run writes no log line (a log file that cannot be written, and a run that ends as ERROR `log-busy`).
 - `VERSION` set to `0.3.3`. 257 unit tests; `seed_cases.py` unchanged and all as expected under Python 3.11.6 and 3.9.6. On 19 November 2026 version 0.3.3 ran green in this repository's own workflows on GitHub's hosted Linux runner: the unit tests and seeded cases under Python 3.10 to 3.14, all eleven polyglot set-ups and the action's self-test with seven cases.
 
