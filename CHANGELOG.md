@@ -9,6 +9,7 @@ The ids in brackets (R1 to R20, P1 to P4, K04, V3a to V7, K08, B1, I1 to I10, D1
 ## Not released yet
 
 - The quick start in `README.md` and `docs/github-action.md` names the commit hash of release v0.3.3. Inside the release itself those lines hold a placeholder, because a commit cannot name its own hash.
+- `docs/ci-platforms.md` and `docs/github-action.md` record the first runs of the action called from a second repository on real pull requests, on 23 November 2026.
 
 ## 0.3.3, 23 November 2026: the first public release
 
