@@ -86,14 +86,22 @@ You need a repository whose test runner can run a given list of test files and w
 ### Route 1: the action (recommended)
 
 1. Copy `change-guard.example.json` to `change-guard.json` at the repository root and set `protected`, `tests` and `test_command` for your project (see "Configuration" below). Add `.change-guard/` to `.gitignore`.
-2. Add a workflow `.github/workflows/change-guard.yml` with the `pull_request` trigger, a read-only token, a checkout with full history, and this step:
+2. Add a workflow `.github/workflows/change-guard.yml` with the `pull_request` trigger, a read-only token, and these two steps:
 
 ```yaml
+      - name: Check out with full history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Change guard
         uses: m-atek/change-guard@<full commit hash of the v0.3.3 release> # v0.3.3
         with:
           mode: ${{ vars.CHANGE_GUARD_MODE || 'report' }}
 ```
+
+   The checkout needs `fetch-depth: 0`. With a shallow checkout the guard cannot find the base commit and ends as ERROR (`git`); in report mode the check is still green then, although nothing was judged. The `mode` line reads the repository variable `CHANGE_GUARD_MODE`; without that variable the mode is `report`.
 
 3. Replace `<full commit hash of the v0.3.3 release>` with the 40-character commit hash shown for the release tag on the releases page; the workflow does not load with the text in angle brackets.
 4. Open a pull request with these files.

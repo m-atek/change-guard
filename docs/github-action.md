@@ -73,13 +73,15 @@ jobs:
 
 Pin the action to the full commit hash of a release, with the version as a comment, as above. Replace `<full commit hash of the v0.3.3 release>` with the 40-character hash shown for the release tag; the workflow does not load with the text in angle brackets. A tag such as `v0.3.3` can be moved by whoever controls the repository; a full commit hash cannot. If your organisation uses workflow lockfiles, the lockfile records the commit for you. Pin `actions/checkout` and `actions/upload-artifact` the same way if your policy asks for it.
 
+If the repository already has the variable `CHANGE_GUARD_MODE` (for example from the copy-the-files route), the action takes the mode from it; without the variable the mode is `report`.
+
 **3. Open a pull request** with these two files. The target branch has no `change-guard.json` yet, so this one pull request is judged by the configuration it brings, and the output says so (note `config-from-head`). From the next pull request on, the configuration always comes from the target branch, so a pull request cannot change the rules it is judged by.
 
-**4. Read the result.** The guard writes its verdict into the job log and the step summary of the run. The check stays green in report mode, which is the default, so you can watch it on real pull requests before you let it block anything.
+**4. Read the result.** The guard writes its verdict into the job log and the step summary of the run. The check stays green in report mode, which is the default, so you can watch it on real pull requests before you let it block anything. A result of ERROR (`git`) next to a warning about a shallow checkout means the checkout step lacks `fetch-depth: 0`; in report mode the check is green then too, although nothing was judged.
 
 ## What a developer sees
 
-These are the real messages of the three seeded cases in `seed_cases.py`, in blocking mode (commit ids shortened). On GitHub the same sentence also appears as an annotation on the run and at the top of the step summary.
+These are the real messages of the three seeded cases in `seed_cases.py`, in blocking mode (commit ids shortened). On GitHub the same sentence also appears as an annotation on the run and at the top of the step summary. The lines under `per-test results` are printed with `--explain`, which the action does not pass: on GitHub those results are in the step summary as a table, not in the job log.
 
 **A behaviour change with no test:**
 

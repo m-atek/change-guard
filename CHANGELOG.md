@@ -2,11 +2,13 @@
 
 0.3.3 is the version prepared for the first public release of the change guard. Versions 0.2.2, 0.3.0, 0.3.1 and 0.3.2 were packaged for release but never published; 0.2.2 corresponds to the internal version 2.2.0, the code that was built, reviewed and first run on GitHub Actions under that number. The version string inside `change_guard.py` (`VERSION`, printed by `--version` and in the first line of every run) reads `0.3.3`, so the tool and these notes agree.
 
-The versions before 0.3.3 are pre-release history. They were built and tested in private between 17 and 18 November 2026 and were never published. Their internal numbers 1, 2.0, 2.1 and 2.2 are mapped to 0.1.0, 0.2.0, 0.2.1 and 0.2.2 below; comments in the code and the tests use the public numbers. The test files `tests/test_v21_fixes.py` and `tests/test_v22_hardening.py` keep their names: they hold the tests for 0.2.1 and 0.2.2.
+The versions before 0.3.3 are pre-release history. They were built and tested in private between 17 and 19 November 2026 and were never published. Their internal numbers 1, 2.0, 2.1 and 2.2 are mapped to 0.1.0, 0.2.0, 0.2.1 and 0.2.2 below; comments in the code and the tests use the public numbers. The test files `tests/test_v21_fixes.py` and `tests/test_v22_hardening.py` keep their names: they hold the tests for 0.2.1 and 0.2.2.
 
 The ids in brackets (R1 to R20, P1 to P4, K04, V3a to V7, K08, B1, I1 to I10, D1 to D15 and M1 to M17 of the 0.3.0 audits, RC-N1 to RC-N9 and RT-N1 to RT-N8 of the re-audits of 0.3.1, and C-N1 to C-N5 of the check of 0.3.2) are the items of the reviews listed at the end of this file, one line each. The audit reports themselves are not published. Every review, verification round and audit listed here was done by AI tools, not by people. Several test classes in `tests/` are named after them.
 
-## 0.3.3, 19 November 2026: five points from a check of 0.3.2
+## 0.3.3, 23 November 2026: the first public release
+
+The code of this version dates from 19 November 2026 and closes five points from a check of 0.3.2. It was released on 23 November 2026, with two later changes that touch no code of the guard: the workflow pins and the README sentence in the last lines below.
 
 A separate check of 0.3.2, done by an AI tool, found nothing blocking and five new points (C-N1 to C-N5). Version 0.3.2 had run green in this repository's own workflows on GitHub's hosted Linux runner (unit tests and seeded cases under Python 3.10 to 3.14, all eleven polyglot set-ups, the action's self-test with seven cases); the workflows repeat that for every later commit. Each code change below has a test in `tests/test_audit_033.py`.
 
@@ -17,7 +19,8 @@ A separate check of 0.3.2, done by an AI tool, found nothing blocking and five n
 - **C-N5:** the README names the creation times of the working copies among the signals a test written to lie can still read.
 - Texts: what remains of RC-N1 is stated in the README limits; which Python versions ran which version; the 0.3.2 runs on GitHub.
 - The repository's own workflows in `.github/workflows/` now pin every action they use to a full commit hash, with the version as a comment, as the documents advise users to do.
-- `VERSION` set to `0.3.3`. 257 unit tests; `seed_cases.py` unchanged and all as expected under Python 3.11.6 and 3.9.6. Later the same day version 0.3.3 ran green in this repository's own workflows on GitHub's hosted Linux runner: the unit tests and seeded cases under Python 3.10 to 3.14, all eleven polyglot set-ups and the action's self-test with seven cases.
+- The README now names the two rare cases in which a run writes no log line (a log file that cannot be written, and a run that ends as ERROR `log-busy`).
+- `VERSION` set to `0.3.3`. 257 unit tests; `seed_cases.py` unchanged and all as expected under Python 3.11.6 and 3.9.6. On 19 November 2026 version 0.3.3 ran green in this repository's own workflows on GitHub's hosted Linux runner: the unit tests and seeded cases under Python 3.10 to 3.14, all eleven polyglot set-ups and the action's self-test with seven cases.
 
 ## 0.3.2, 19 November 2026: fixes from two re-audits of 0.3.1
 
