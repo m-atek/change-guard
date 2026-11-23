@@ -6,6 +6,10 @@ The versions before 0.3.3 are pre-release history. They were built and tested in
 
 The ids in brackets (R1 to R20, P1 to P4, K04, V3a to V7, K08, B1, I1 to I10, D1 to D15 and M1 to M17 of the 0.3.0 audits, RC-N1 to RC-N9 and RT-N1 to RT-N8 of the re-audits of 0.3.1, and C-N1 to C-N5 of the check of 0.3.2) are the items of the reviews listed at the end of this file, one line each. The audit reports themselves are not published. Every review, verification round and audit listed here was done by AI tools, not by people. Several test classes in `tests/` are named after them.
 
+## Not released yet
+
+- The quick start in `README.md` and `docs/github-action.md` names the commit hash of release v0.3.3. Inside the release itself those lines hold a placeholder, because a commit cannot name its own hash.
+
 ## 0.3.3, 23 November 2026: the first public release
 
 The code of this version dates from 19 November 2026 and closes five points from a check of 0.3.2. It was released on 23 November 2026, with later changes that touch no code of the guard: the workflow pins, the Vitest fixture and the texts in the last lines below.

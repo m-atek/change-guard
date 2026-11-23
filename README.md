@@ -96,14 +96,14 @@ You need a repository whose test runner can run a given list of test files and w
           persist-credentials: false
 
       - name: Change guard
-        uses: m-atek/change-guard@<full commit hash of the v0.3.3 release> # v0.3.3
+        uses: m-atek/change-guard@577526c24a75875ca316216e835600e302523c91 # v0.3.3
         with:
           mode: ${{ vars.CHANGE_GUARD_MODE || 'report' }}
 ```
 
    The checkout needs `fetch-depth: 0`. With a shallow checkout the guard cannot find the base commit and ends as ERROR (`git`); in report mode the check is still green then, although nothing was judged. The `mode` line reads the repository variable `CHANGE_GUARD_MODE`; without that variable the mode is `report`.
 
-3. Replace `<full commit hash of the v0.3.3 release>` with the 40-character commit hash shown for the release tag on the releases page; the workflow does not load with the text in angle brackets.
+3. The hash above is the commit of release v0.3.3. For a later release, use the 40-character commit hash shown for its tag on the releases page.
 4. Open a pull request with these files.
 
 [docs/github-action.md](docs/github-action.md) has the complete workflow to copy, the inputs and outputs, how to make the check required, the skip step, and what the action does not do. Pin the action to the full commit hash of a release, never to a branch. The action runs the guard from its own files at that commit, never from the pull request, and uses no other action inside it. Never use it as `uses: ./` in the repository it checks: that would run the pull request's own copy of the guard. Its outputs (`result`, `cause`, `blocks`, `log-line`) are for information; the check passes or fails on the guard's exit code, and `blocks` follows that exit code.

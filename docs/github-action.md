@@ -57,7 +57,7 @@ jobs:
       # request's code with the whole job environment; prefer setup_command.
 
       - name: Change guard
-        uses: m-atek/change-guard@<full commit hash of the v0.3.3 release> # v0.3.3
+        uses: m-atek/change-guard@577526c24a75875ca316216e835600e302523c91 # v0.3.3
         with:
           mode: ${{ vars.CHANGE_GUARD_MODE || 'report' }}
 
@@ -71,7 +71,7 @@ jobs:
           retention-days: 90
 ```
 
-Pin the action to the full commit hash of a release, with the version as a comment, as above. Replace `<full commit hash of the v0.3.3 release>` with the 40-character hash shown for the release tag; the workflow does not load with the text in angle brackets. A tag such as `v0.3.3` can be moved by whoever controls the repository; a full commit hash cannot. If your organisation uses workflow lockfiles, the lockfile records the commit for you. Pin `actions/checkout` and `actions/upload-artifact` the same way if your policy asks for it.
+Pin the action to the full commit hash of a release, with the version as a comment, as above. The hash shown is the commit of release v0.3.3; for a later release, use the 40-character hash shown for its tag on the releases page. A tag such as `v0.3.3` can be moved by whoever controls the repository; a full commit hash cannot. If your organisation uses workflow lockfiles, the lockfile records the commit for you. Pin `actions/checkout` and `actions/upload-artifact` the same way if your policy asks for it.
 
 If the repository already has the variable `CHANGE_GUARD_MODE` (for example from the copy-the-files route), the action takes the mode from it; without the variable the mode is `report`.
 
