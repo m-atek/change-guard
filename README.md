@@ -34,7 +34,7 @@ The steps above in more detail. For every pull request it:
 4. Stops a change to protected files that brings no test.
 5. Runs the changed tests on the head commit (they must pass), then on the base commit with the head's test files, the `test_support` files, the files the change adds outside the protected paths and the edited files that are test material laid over it (they must fail, for a reason that counts; [docs/how-it-works.md](docs/how-it-works.md) has the rule), then on the base a second time (the result must be the same).
 6. For new Python functions, runs the tests once more with each new function's body replaced by `return None`: at least one test must notice.
-7. Prints one result, one sentence with the cause, any notes for the reviewer, and appends exactly one line to a log.
+7. Prints one result, one sentence with the cause and any notes for the reviewer, and appends one line to a log. Two rare cases write no line: a log file that cannot be written, and a run that ends as ERROR `log-busy` (see "Limits, stated plainly").
 
 [docs/how-it-works.md](docs/how-it-works.md) has the full decision flow and every result and cause code.
 
